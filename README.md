@@ -1,5 +1,7 @@
 # 时序日历
 
+> 换机接续开发：[Tauri 2 迁移计划](docs/TAURI_MIGRATION_PLAN.md)。`edit` 分支当前保存计划，程序仍为 Electron 1.3.0，原生迁移尚未实施。
+
 运行于 **Windows 10/11 x64** 的个人 CalDAV 客户端。Electron + React + TypeScript + Vite；中文界面，支持浅色、深色与系统主题。首次运行没有示例账户或演示日程。
 
 ![首次启动的真实空日历](docs/screenshots/first-run.png)
