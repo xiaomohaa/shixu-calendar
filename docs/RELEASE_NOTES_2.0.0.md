@@ -10,7 +10,7 @@
 
 ## 安装与旧版迁移
 
-下载本页的 `时序日历 2_2.0.0_x64-setup.exe`，支持 Windows 10/11 x64，使用系统 WebView2 Runtime。安装目录文件约 42.29 MiB；共享 WebView2 Runtime 的占用不包含在该数值内。
+下载本页的 `Shixu-Setup-2.0.0-x64.exe`，支持 Windows 10/11 x64，使用系统 WebView2 Runtime。安装目录文件约 42.29 MiB；共享 WebView2 Runtime 的占用不包含在该数值内。
 
 从 Electron 1.3.0 升级时，先从托盘彻底退出旧版，再手动安装 2.0.0。旧版应用内更新协议与 Tauri 不同，本次跨框架升级使用手动安装。
 

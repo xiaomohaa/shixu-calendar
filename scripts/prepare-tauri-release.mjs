@@ -8,8 +8,9 @@ const version = config.version;
 if (!/^\d+\.\d+\.\d+$/.test(version) || config.bundle?.createUpdaterArtifacts !== true) {
   throw new Error('Release config requires a stable version and updater artifacts');
 }
-const filename = `${config.productName}_${version}_x64-setup.exe`;
-const source = resolve('src-tauri/target/release/bundle/nsis', filename);
+const sourceFilename = `${config.productName}_${version}_x64-setup.exe`;
+const filename = `Shixu-Setup-${version}-x64.exe`;
+const source = resolve('src-tauri/target/release/bundle/nsis', sourceFilename);
 const verification = spawnSync('cargo', ['test', '--test', 'update_artifact', '--quiet'], {
   cwd: resolve('src-tauri'),
   env: { ...process.env, SHIXU_UPDATE_ARTIFACT: source },
@@ -18,7 +19,7 @@ const verification = spawnSync('cargo', ['test', '--test', 'update_artifact', '-
 if (verification.status !== 0) throw new Error('Updater signature verification failed');
 const signature = (await readFile(`${source}.sig`, 'utf8')).trim();
 const signedText = Buffer.from(signature, 'base64').toString('utf8');
-if (!signedText.includes(`version:${version}`) || !signedText.includes(`file:${filename}`)) {
+if (!signedText.includes(`version:${version}`) || !signedText.includes(`file:${sourceFilename}`)) {
   throw new Error('Updater signature metadata does not match the installer');
 }
 const installer = await readFile(source);
