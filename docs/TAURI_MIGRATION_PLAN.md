@@ -258,8 +258,8 @@ M0 先验证困难点，避免只把 UI 搬到空壳就宣布完成。正式网�
 - [x] 迁移方案与换机文档编写。
 - [ ] M0 环境/可行性：已复现 Electron 基线、最小 Tauri 构建、SQLite、同机凭据格式及真实 WebView2 Worker ICS；更新签名验证待完成。见下方记录。
 - [ ] M1 外壳与 Api：真实 React 界面和部分只读/偏好 API 已在隔离 Tauri 预览中运行；完整业务 API、安全及桌面生命周期待完成。
-- [ ] M2 存储/凭据迁移：尚未开始。
-- [ ] M3 同步/ICS：尚未开始。
+- [ ] M2 存储/凭据迁移：旧库副本、原生快照、设置、DPAPI 与账户保存已开始；正式迁移流程及全量事务回归待完成。
+- [ ] M3 同步/ICS：ICS 显示 Worker 与 CalDAV 发现已开始；拉取、条件写入、离线队列及冲突待完成。
 - [ ] M4 桌面行为：尚未开始。
 - [ ] M5 打包/更新：尚未开始。
 - [ ] M6 全量回归与稳定候选：尚未开始。
@@ -279,7 +279,8 @@ M0 先验证困难点，避免只把 UI 搬到空壳就宣布完成。正式网�
 - 使用 `.smoke-data/` 内合成账户验证旧凭据封装：`accounts.password` 的 base64 解码结果以 `v10` 开头，Electron `Local State` 的 `os_crypt.encrypted_key` 解码后以 `DPAPI` 开头。当前 Windows 用户用 DPAPI 解出 32 字节密钥，再以 AES-256-GCM 解开 `v10` 的 12 字节 nonce、密文和 16 字节 tag，结果与仅用于冒烟测试的合成密码匹配；测试只输出布尔结果，不打印明文或密钥。这证明同机兼容路线可行，真实数据迁移仍未完成。异机仍需重新输入密码。
 - Rust `vault.rs` 已实现 `dpapi:v1:` 新凭据格式和旧 Electron `v10` 同机读取。DPAPI 输出缓冲复制后擦除，Rust 临时密钥/明文使用 `Zeroizing`；无效新密文被拒绝。独立 Rust 测试用合成凭据验证新格式往返，并用实际 Electron 45 冒烟目录在当前 Windows 用户下验证旧密文解密；测试输出只有通过/失败，不输出密码或密钥。尚未将它接到账户保存和正式迁移流程，异机旧密文继续走重新授权路径。
 - ICS 引擎已去除 `node:crypto` 运行依赖，改用 Web Crypto UUID。Tauri 前端将 Rust 提供的可见资源及冲突标记交给模块 Worker 解析，Worker 沿用现有 `ical.js` 重复逻辑，遇到单个损坏资源时保留其他事件并给出诊断。`npm run test:ics-worker` 在本机 Edge Chromium 实际运行模块 Worker，验证两次重复实例、待同步标记及无诊断；`npm test` 60 项、`npm run build`、Rust 测试与 `cargo check` 通过。Edge 结果尚不能代替 Tauri WebView2 验证，且账户/同步写入尚未接通。
-- 隔离 `tauri.ui-preview.conf.json` 将原有 React UI 与全部实际引用字体装入 Tauri WebView2；与最小测试包使用不同 identifier，测试数据通过 `SHIXU_TAURI_TEST_DATA_DIR` 指向 `.smoke-data/tauri-ui-run`，没有读取正常用户目录。`npm run tauri:ui-preview` 成功，NSIS 安装包 `28,600,221` 字节（27.28 MiB）；这是有 UI/字体但未含全部业务功能的预览大小，不是最终 2.0.0 大小。通过 WebView2 调试协议检查真实窗口、空账户引导和 Worker 目标；写入隔离合成账户与两次重复的 ICS 后，真实 Tauri 页面返回 1 个账户、2 个事件，快照不含合成密码，月网格实际显示两个日程胶囊。截图留在忽略目录 `.smoke-data/tauri-ui.png`。账户/DAV 写入、托盘、自启、更新和安装升级仍不可用，不能将此安装包作为完整日历交付。
+- 隔离 `tauri.ui-preview.conf.json` 将原有 React UI 与全部实际引用字体装入 Tauri WebView2；与最小测试包使用不同 identifier，测试数据通过 `SHIXU_TAURI_TEST_DATA_DIR` 指向 `.smoke-data/tauri-ui-run`，没有读取正常用户目录。首次 `npm run tauri:ui-preview` 成功，NSIS 安装包 `28,600,221` 字节（27.28 MiB）；这是有 UI/字体但未含全部业务功能的预览大小，不是最终 2.0.0 大小。通过 WebView2 调试协议检查真实窗口、空账户引导和 Worker 目标；写入隔离合成账户与两次重复的 ICS 后，真实 Tauri 页面返回 1 个账户、2 个事件，快照不含合成密码，月网格实际显示两个日程胶囊。截图留在忽略目录 `.smoke-data/tauri-ui.png`。该次预览尚无账户/DAV 写入、托盘、自启、更新和安装升级，不能将安装包作为完整日历交付。
+- Rust `dav.rs` 已开始取代 `tsdav` 运行时：本机 DAV 测试验证 Basic 认证的 PROPFIND、成功 `propstat`、直接日历发现和 URL 限制。真实隔离 Tauri WebView2 使用现有 DAV fixture 验证 principal/home-set 发现、账户保存事务、`dpapi:v1` 密文落盘、快照不泄漏密码、错误密码 401 和无密码重命名保留原凭据。`npm run test:tauri-account` 通过。加入 HTTP/XML 后预览 NSIS 为 `29,162,977` 字节（约 29.16 MB）；仍非完整功能体积。同步拉取/写入及旧账户正式迁移尚未实现。
 - `npm ci` 成功；`npm run typecheck` 成功；`npm run build` 成功。构建输出的四个字体文件约 37.1 MB，后续 Tauri 包体积统计仍需单独实测。
 - `npm test` 首次在受限沙箱内有 12 项因 `connect EACCES 127.0.0.1` 失败；允许本机回环连接后重跑，60/60 通过。这是测试环境网络权限所致，未修改协议代码。
 - `npm run smoke` 在允许窗口与本机回环连接的环境中通过 34 项，包括实际 DAV 请求、加密凭据、托盘收纳、字体和四视图。报告由脚本生成在既有验证位置；结果仅代表 Electron 基线。

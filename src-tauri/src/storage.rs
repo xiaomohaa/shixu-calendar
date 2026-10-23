@@ -1,3 +1,4 @@
+use crate::dav::{AccountInput, Calendar};
 use rusqlite::{Connection, OpenFlags, OptionalExtension, backup::Backup};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -7,6 +8,12 @@ const SCHEMA_VERSION: i64 = 1;
 
 pub struct Store {
     db: Connection,
+}
+
+pub struct StoredAccount {
+    pub url: String,
+    pub username: String,
+    pub password: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -248,6 +255,45 @@ impl Store {
         if changed != 1 {
             return Err("日历不存在".into());
         }
+        Ok(())
+    }
+
+    pub fn account(&self, id: &str) -> Result<Option<StoredAccount>, String> {
+        self.db
+            .query_row(
+                "SELECT url,username,password FROM accounts WHERE id=?",
+                [id],
+                |row| {
+                    Ok(StoredAccount {
+                        url: row.get(0)?,
+                        username: row.get(1)?,
+                        password: row.get(2)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(|_| "读取账户失败".into())
+    }
+
+    pub fn save_account(
+        &mut self,
+        id: &str,
+        input: &AccountInput,
+        ciphertext: &str,
+        calendars: &[Calendar],
+    ) -> Result<(), String> {
+        let tx = self.db.transaction().map_err(|_| "无法开始账户保存事务")?;
+        tx.execute("INSERT INTO accounts(id,name,url,username,password,allowHttp,paused) VALUES(?,?,?,?,?,?,?)
+            ON CONFLICT(id) DO UPDATE SET name=excluded.name,password=excluded.password,allowHttp=excluded.allowHttp,paused=excluded.paused,error=NULL",
+            rusqlite::params![id, input.name, input.url, input.username, ciphertext, input.allow_http, input.paused])
+            .map_err(|_| "保存账户失败")?;
+        for calendar in calendars {
+            tx.execute("INSERT INTO calendars(id,accountId,url,name,color,readOnly) VALUES(?,?,?,?,?,?)
+                ON CONFLICT(accountId,url) DO UPDATE SET name=excluded.name,readOnly=excluded.readOnly",
+                rusqlite::params![calendar.id, id, calendar.url, calendar.name, calendar.color, calendar.read_only])
+                .map_err(|_| "保存日历列表失败")?;
+        }
+        tx.commit().map_err(|_| "提交账户保存事务失败")?;
         Ok(())
     }
 

@@ -21,6 +21,7 @@
     "release:publish": "node scripts/publish.mjs",
     "test:resize": "node scripts/resize-smoke.mjs",
     "test:ics-worker": "node scripts/ics-worker-smoke.mjs",
+    "test:tauri-account": "node scripts/tauri-account-smoke.mjs",
     "tauri:probe": "tauri build",
     "tauri:ui-preview": "tauri build --config src-tauri/tauri.ui-preview.conf.json"
   },

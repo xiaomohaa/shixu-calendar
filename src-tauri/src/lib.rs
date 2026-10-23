@@ -1,3 +1,4 @@
+mod dav;
 mod storage;
 #[cfg(windows)]
 mod vault;
@@ -6,12 +7,92 @@ use std::sync::Mutex;
 use tauri::{Emitter, Manager};
 
 #[tauri::command]
-fn shixu_call(
+async fn shixu_call(
     method: String,
     args: Vec<Value>,
     store: tauri::State<'_, Mutex<storage::Store>>,
     app: tauri::AppHandle,
 ) -> Result<Value, String> {
+    if method == "testAccount" {
+        let result: Result<Value, String> = async {
+            if args.len() != 1 {
+                return Err("账户参数无效".into());
+            }
+            let mut input: dav::AccountInput =
+                serde_json::from_value(args.into_iter().next().unwrap())
+                    .map_err(|_| "账户参数无效")?;
+            input.validate()?;
+            let password = input
+                .password
+                .take()
+                .filter(|value| !value.is_empty())
+                .ok_or("请输入密码或应用专用密码")?;
+            let client = dav::DavClient::new(&input, zeroize::Zeroizing::new(password))?;
+            let calendars = client.discover(input.id.as_deref().unwrap_or("")).await?;
+            serde_json::to_value(calendars).map_err(|_| "无法读取日历列表".into())
+        }
+        .await;
+        return Ok(match result {
+            Ok(value) => json!({"ok": true, "value": value}),
+            Err(error) => json!({"ok": false, "error": error}),
+        });
+    }
+    if method == "saveAccount" {
+        let result: Result<Value, String> = async {
+            if args.len() != 1 {
+                return Err("账户参数无效".into());
+            }
+            let mut input: dav::AccountInput =
+                serde_json::from_value(args.into_iter().next().unwrap())
+                    .map_err(|_| "账户参数无效")?;
+            input.validate()?;
+            input.name = input.name.trim().to_string();
+            input.url = dav::normalize_url(&input.url, input.allow_http)?.to_string();
+            let id = input
+                .id
+                .clone()
+                .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+            let existing = store
+                .lock()
+                .map_err(|_| "本地数据库暂时不可用")?
+                .account(&id)?;
+            if input.id.is_some() && existing.is_none() {
+                return Err("账户已移除，请刷新".into());
+            }
+            if let Some(existing) = &existing {
+                if existing.url != input.url || existing.username != input.username {
+                    return Err("服务器地址或用户名变更请添加新账户，防止混淆离线修改".into());
+                }
+            }
+            let supplied = input
+                .password
+                .take()
+                .filter(|password| !password.is_empty())
+                .map(zeroize::Zeroizing::new);
+            let ciphertext = match (&supplied, &existing) {
+                (Some(password), _) => vault::seal(password.as_str())?,
+                (None, Some(old)) => old.password.clone(),
+                (None, None) => return Err("请输入密码或应用专用密码".into()),
+            };
+            let calendars = if existing.is_none() {
+                let password = supplied.ok_or("请输入密码或应用专用密码")?;
+                dav::DavClient::new(&input, password)?.discover(&id).await?
+            } else {
+                Vec::new()
+            };
+            store
+                .lock()
+                .map_err(|_| "本地数据库暂时不可用")?
+                .save_account(&id, &input, &ciphertext, &calendars)?;
+            let _ = app.emit("shixu:changed", ());
+            Ok(json!(id))
+        }
+        .await;
+        return Ok(match result {
+            Ok(value) => json!({"ok": true, "value": value}),
+            Err(error) => json!({"ok": false, "error": error}),
+        });
+    }
     let store = store
         .lock()
         .map_err(|_| "本地数据库暂时不可用".to_string())?;
