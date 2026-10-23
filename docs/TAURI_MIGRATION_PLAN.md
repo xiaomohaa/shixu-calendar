@@ -256,7 +256,7 @@ M0 先验证困难点，避免只把 UI 搬到空壳就宣布完成。正式网�
 ## 10. 接续任务记录
 
 - [x] 迁移方案与换机文档编写。
-- [ ] M0 环境/可行性：已在接续电脑复现 Electron 基线；原生工具链与 Tauri 可行性验证待完成。见下方记录。
+- [ ] M0 环境/可行性：已复现 Electron 基线并完成最小 Tauri 构建；SQLite、凭据、Worker ICS 与更新签名验证待完成。见下方记录。
 - [ ] M1 外壳与 Api：尚未开始。
 - [ ] M2 存储/凭据迁移：尚未开始。
 - [ ] M3 同步/ICS：尚未开始。
@@ -271,10 +271,11 @@ M0 先验证困难点，避免只把 UI 搬到空壳就宣布完成。正式网�
 - 分支 `edit`，接续点 `bb7897b`；工作区从公开仓库克隆，未接触真实用户数据库。
 - Node.js `v24.11.1`、npm `11.6.2`；检测到 WebView2 `155.0.4283.62`。通过 winget 安装 Rustup，已核对 `rustc 1.99.1`、`cargo 1.99.1`、`stable-x86_64-pc-windows-msvc`。
 - Visual Studio C++ Build Tools 安装器返回退出码 1。`vswhere -all` 显示已有 BuildTools 实例处于不完整、不可启动状态（`state=13`、`isComplete=false`），未找到 `cl.exe`；Windows SDK 库目录也未找到。需先修复本机安装，再进行 Tauri 原生编译；目前未声称 Tauri 构建成功。
+- 随后用户完成 C++ Build Tools 安装；本机识别到 MSVC `14.44.35207` 和 Windows SDK `10.0.26100.0`。新增隔离 identifier `cn.shixu.calendar.tauri.dev` 的最小 Tauri 2 测试项目，Cargo 锁定 412 个依赖包；使用 `npx tauri build` 完成 release 构建。原生测试 EXE `8,877,056` 字节，NSIS 安装包 `1,920,848` 字节。实际启动后窗口标题为“时序日历 Tauri 可行性测试”。它使用独立的测试页面，没有携带现有字体或业务功能，只证明工具链、WebView2 和打包链路可用，不能作为日历迁移完成或 30–50 MB 目标的实测值。
 - `npm ci` 成功；`npm run typecheck` 成功；`npm run build` 成功。构建输出的四个字体文件约 37.1 MB，后续 Tauri 包体积统计仍需单独实测。
 - `npm test` 首次在受限沙箱内有 12 项因 `connect EACCES 127.0.0.1` 失败；允许本机回环连接后重跑，60/60 通过。这是测试环境网络权限所致，未修改协议代码。
 - `npm run smoke` 在允许窗口与本机回环连接的环境中通过 34 项，包括实际 DAV 请求、加密凭据、托盘收纳、字体和四视图。报告由脚本生成在既有验证位置；结果仅代表 Electron 基线。
-- 尚未完成：最小 Tauri 可执行文件、SQLite 原生读写、旧 safeStorage 密文兼容性、Worker ICS 原型及更新签名验证。M0 不能标为完成；下一步先补 Rust/MSVC，再在隔离数据目录做这些验证。
+- 尚未完成：SQLite 原生读写、旧 safeStorage 密文兼容性、Worker ICS 原型及更新签名验证。M0 不能标为完成；下一步在隔离数据目录做这些验证。
 
 ## 11. 可以直接发给下一台电脑上的 Codex
 

@@ -1,0 +1,37 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "时序日历 Tauri 可行性测试",
+  "version": "0.1.0",
+  "identifier": "cn.shixu.calendar.tauri.dev",
+  "build": {
+    "frontendDist": "probe-ui"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "时序日历 Tauri 可行性测试",
+        "width": 640,
+        "height": 420,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "android": {
+      "debugApplicationIdSuffix": ".debug"
+    }
+  }
+}

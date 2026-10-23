@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-main/
 release/
+src-tauri/target/
 .smoke-data/
 test-results/
 *.db*

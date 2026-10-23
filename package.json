@@ -18,7 +18,8 @@
     "smoke": "node scripts/smoke.mjs",
     "test:updater": "node scripts/update-smoke.mjs",
     "release:publish": "node scripts/publish.mjs",
-    "test:resize": "node scripts/resize-smoke.mjs"
+    "test:resize": "node scripts/resize-smoke.mjs",
+    "tauri:probe": "tauri build"
   },
   "dependencies": {
     "@fullcalendar/core": "6.1.20",
@@ -40,6 +41,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.12.4",
     "@types/luxon": "^3.7.1",
     "@types/node": "^24.10.0",
     "@types/react": "^19.2.0",
