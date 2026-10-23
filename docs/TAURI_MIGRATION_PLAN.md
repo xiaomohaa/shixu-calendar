@@ -274,7 +274,8 @@ M0 先验证困难点，避免只把 UI 搬到空壳就宣布完成。正式网�
 - 随后用户完成 C++ Build Tools 安装；本机识别到 MSVC `14.44.35207` 和 Windows SDK `10.0.26100.0`。新增隔离 identifier `cn.shixu.calendar.tauri.dev` 的最小 Tauri 2 测试项目，Cargo 锁定 412 个依赖包；使用 `npx tauri build` 完成 release 构建。原生测试 EXE `8,877,056` 字节，NSIS 安装包 `1,920,848` 字节。实际启动后窗口标题为“时序日历 Tauri 可行性测试”。它使用独立的测试页面，没有携带现有字体或业务功能，只证明工具链、WebView2 和打包链路可用，不能作为日历迁移完成或 30–50 MB 目标的实测值。
 - 用户明确要求完整功能作为新的 **2.0.0** 版本。Tauri 开发包版本先标记 `2.0.0-alpha.1`，沿用隔离 identifier；旧 Electron 1.3.0 的根 `package.json` 版本和稳定发布不动。正式功能验收后再改为 2.0.0。
 - Rust SQLite 存储层已按旧 schema v1 建表，并用 SQLite backup API 从只读旧库复制到隔离目录。合成测试确认原始 ICS、密码密文、待同步操作和冲突记录完整，源库不变。这是 M2 的起点，尚未接入完整业务 API，也未试真实用户数据。
-- 新增 `src/platform/tauri.ts`，在 Tauri WebView 中将既有 `window.shixu` 方法映射为同名原生命令，并复用变更/更新事件语义；Electron preload 仍保留用于旧版回归。原生命令端尚未实现，正式 UI 暂不装入 Tauri 测试包，避免把不可用按钮当作移植完成。
+- 新增 `src/platform/tauri.ts`，在 Tauri WebView 中将既有 `window.shixu` 方法映射为同名原生命令，并复用变更/更新事件语义；Electron preload 仍保留用于旧版回归。
+- 原生命令端已开始接线：独立 Tauri 数据目录中的 Rust SQLite 提供账户、日历、冲突、队列数量和偏好快照（不回传密码字段）；偏好写入校验所有字段、IANA 时区和默认日历，日历显隐/颜色写入校验参数。其他业务方法仍明确返回“尚未开放”，正式 UI 仍不装入测试包。隔离 Rust 测试验证原有数据复制、快照无密文、无效设置不覆盖数据、日历显示设置持久化；`cargo check` 与 `npm run typecheck` 通过。
 - `npm ci` 成功；`npm run typecheck` 成功；`npm run build` 成功。构建输出的四个字体文件约 37.1 MB，后续 Tauri 包体积统计仍需单独实测。
 - `npm test` 首次在受限沙箱内有 12 项因 `connect EACCES 127.0.0.1` 失败；允许本机回环连接后重跑，60/60 通过。这是测试环境网络权限所致，未修改协议代码。
 - `npm run smoke` 在允许窗口与本机回环连接的环境中通过 34 项，包括实际 DAV 请求、加密凭据、托盘收纳、字体和四视图。报告由脚本生成在既有验证位置；结果仅代表 Electron 基线。

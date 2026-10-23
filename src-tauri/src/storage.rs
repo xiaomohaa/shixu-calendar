@@ -1,4 +1,6 @@
-use rusqlite::{Connection, OpenFlags, backup::Backup};
+use rusqlite::{Connection, OpenFlags, OptionalExtension, backup::Backup};
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
 use std::path::Path;
 
 const SCHEMA_VERSION: i64 = 1;
@@ -15,6 +17,47 @@ pub struct Inventory {
     pub pending: i64,
     pub conflicts: i64,
     pub ics_bytes: i64,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Settings {
+    theme: String,
+    view: String,
+    first_day: i64,
+    duration: i64,
+    reminder: i64,
+    timezone: String,
+    auto_sync: bool,
+    interval: i64,
+    default_calendar: String,
+    time_format: String,
+    date_format: String,
+    auto_update_check: bool,
+    close_to_tray: bool,
+}
+
+impl Settings {
+    fn validate(&self) -> Result<(), String> {
+        if !matches!(self.theme.as_str(), "system" | "light" | "dark")
+            || !matches!(
+                self.view.as_str(),
+                "dayGridMonth" | "timeGridWeek" | "timeGridDay" | "listMonth"
+            )
+            || !(0..=6).contains(&self.first_day)
+            || !(5..=1440).contains(&self.duration)
+            || !(-1..=10080).contains(&self.reminder)
+            || self.timezone.len() > 100
+            || self.timezone.parse::<chrono_tz::Tz>().is_err()
+            || !(1..=1440).contains(&self.interval)
+            || self.default_calendar.len() > 200
+            || !matches!(self.time_format.as_str(), "24" | "12")
+            || !matches!(self.date_format.as_str(), "numeric" | "chinese")
+        {
+            return Err("日历设置无效".into());
+        }
+        Ok(())
+    }
 }
 
 impl Store {
@@ -74,6 +117,102 @@ impl Store {
                 })
             },
         )
+    }
+
+    pub fn snapshot(&self, defaults: Value) -> rusqlite::Result<Value> {
+        let accounts = self.db.prepare("SELECT id,name,url,username,allowHttp,paused,lastSync,error FROM accounts")?
+            .query_map([], |row| Ok(json!({
+                "id": row.get::<_, String>(0)?, "name": row.get::<_, String>(1)?,
+                "url": row.get::<_, String>(2)?, "username": row.get::<_, String>(3)?,
+                "allowHttp": row.get::<_, bool>(4)?, "paused": row.get::<_, bool>(5)?,
+                "lastSync": row.get::<_, Option<String>>(6)?, "error": row.get::<_, Option<String>>(7)?
+            })))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        let calendars = self
+            .db
+            .prepare("SELECT id,accountId,url,name,color,visible,readOnly FROM calendars")?
+            .query_map([], |row| {
+                Ok(json!({
+                    "id": row.get::<_, String>(0)?, "accountId": row.get::<_, String>(1)?,
+                    "url": row.get::<_, String>(2)?, "name": row.get::<_, String>(3)?,
+                    "color": row.get::<_, String>(4)?, "visible": row.get::<_, bool>(5)?,
+                    "readOnly": row.get::<_, bool>(6)?
+                }))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let conflicts = self.db.prepare("SELECT id,resourceId,localIcs,remoteIcs,remoteEtag,createdAt FROM conflicts ORDER BY createdAt")?
+            .query_map([], |row| Ok(json!({
+                "id": row.get::<_, String>(0)?, "resourceId": row.get::<_, String>(1)?,
+                "localIcs": row.get::<_, String>(2)?, "remoteIcs": row.get::<_, Option<String>>(3)?,
+                "remoteEtag": row.get::<_, Option<String>>(4)?, "createdAt": row.get::<_, String>(5)?
+            })))?.collect::<rusqlite::Result<Vec<_>>>()?;
+        let saved: Option<String> = self
+            .db
+            .query_row(
+                "SELECT value FROM settings WHERE key='preferences'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let mut settings = defaults;
+        if let (Some(target), Some(raw)) = (settings.as_object_mut(), saved) {
+            let parsed: Value =
+                serde_json::from_str(&raw).map_err(|_| rusqlite::Error::InvalidQuery)?;
+            let saved = parsed.as_object().ok_or(rusqlite::Error::InvalidQuery)?;
+            target.extend(saved.clone());
+        }
+        let count = self.inventory()?;
+        Ok(json!({
+            "accounts": accounts, "calendars": calendars, "settings": settings,
+            "pending": count.pending, "conflicts": conflicts, "syncing": [],
+            "bytes": count.ics_bytes, "resources": count.resources, "diagnostics": []
+        }))
+    }
+
+    pub fn set_settings(&self, raw: Value) -> Result<(), String> {
+        let settings: Settings = serde_json::from_value(raw).map_err(|_| "日历设置无效")?;
+        settings.validate()?;
+        if !settings.default_calendar.is_empty() {
+            let writable: Option<i64> = self
+                .db
+                .query_row(
+                    "SELECT 1 FROM calendars WHERE id=? AND readOnly=0",
+                    [&settings.default_calendar],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|_| "读取默认日历失败")?;
+            if writable.is_none() {
+                return Err("默认日历不存在或为只读".into());
+            }
+        }
+        let value = serde_json::to_string(&settings).map_err(|_| "日历设置无效")?;
+        self.db.execute(
+            "INSERT INTO settings(key,value) VALUES('preferences',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            [&value],
+        ).map_err(|_| "保存日历设置失败")?;
+        Ok(())
+    }
+
+    pub fn set_calendar(&self, id: &str, visible: bool, color: &str) -> Result<(), String> {
+        if id.is_empty()
+            || id.len() > 200
+            || color.len() != 7
+            || !color.starts_with('#')
+            || !color[1..].bytes().all(|c| c.is_ascii_hexdigit())
+        {
+            return Err("日历参数无效".into());
+        }
+        let changed = self
+            .db
+            .execute(
+                "UPDATE calendars SET visible=?,color=? WHERE id=?",
+                rusqlite::params![visible, color, id],
+            )
+            .map_err(|_| "保存日历显示设置失败")?;
+        if changed != 1 {
+            return Err("日历不存在".into());
+        }
+        Ok(())
     }
 
     /// Copy through SQLite's backup API so WAL content is included. The source is never written.
@@ -145,5 +284,27 @@ mod tests {
         assert_eq!(copied_etag, "\"v1\"");
         assert_eq!(copied_token, "token-1");
         assert!(Store::copy_legacy(&source, &destination).is_err());
+        let snapshot = copied
+            .snapshot(json!({"theme":"system", "timezone":"Asia/Shanghai"}))
+            .unwrap();
+        assert_eq!(snapshot["pending"], 1);
+        assert_eq!(snapshot["conflicts"][0]["id"], "f");
+        assert_eq!(snapshot["accounts"][0]["allowHttp"], false);
+        assert!(snapshot.to_string().find("encrypted").is_none());
+        let mut settings = json!({
+            "theme":"dark", "view":"dayGridMonth", "firstDay":1,
+            "duration":60, "reminder":15, "timezone":"Asia/Shanghai",
+            "autoSync":true, "interval":10, "defaultCalendar":"c",
+            "timeFormat":"24", "dateFormat":"chinese",
+            "autoUpdateCheck":true, "closeToTray":true
+        });
+        copied.set_settings(settings.clone()).unwrap();
+        settings["timezone"] = json!("No/Such_Zone");
+        assert!(copied.set_settings(settings).is_err());
+        assert!(copied.set_calendar("c", false, "red").is_err());
+        copied.set_calendar("c", false, "#abcdef").unwrap();
+        let current = copied.snapshot(json!({})).unwrap();
+        assert_eq!(current["settings"]["timezone"], "Asia/Shanghai");
+        assert_eq!(current["calendars"][0]["visible"], false);
     }
 }
