@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-main/
 release/
+release-tauri-probe/
 src-tauri/target/
 .smoke-data/
 test-results/
