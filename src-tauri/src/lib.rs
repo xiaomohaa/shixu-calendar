@@ -53,7 +53,13 @@ fn shixu_call(
 pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
-            let data_dir = app.path().app_data_dir()?;
+            let data_dir = if app.config().identifier.ends_with(".dev") {
+                std::env::var_os("SHIXU_TAURI_TEST_DATA_DIR")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or(app.path().app_data_dir()?)
+            } else {
+                app.path().app_data_dir()?
+            };
             std::fs::create_dir_all(&data_dir)?;
             let store = storage::Store::open(&data_dir.join("calendar.db"))?;
             app.manage(Mutex::new(store));
