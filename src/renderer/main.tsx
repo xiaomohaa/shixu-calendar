@@ -4,4 +4,6 @@ import { App } from './App';
 import './styles.css';
 import './almanac.css';
 import './desktop.css';
+import './native-calendar.css';
+import './month.css';
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);

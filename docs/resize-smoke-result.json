@@ -1,0 +1,180 @@
+{
+  "version": "1.3.0",
+  "results": [
+    "321 个真实 DAV 日程完成加载，包含跨月全天与长标题",
+    "大窗口以浅色胶囊显示日程文字",
+    "紫色日历胶囊保持紫色浅底，不偏移为其他色相",
+    "跨月全天事件在下一月日格保持可见",
+    "真实拖动跨月全天事件按历日平移并保持四天时长",
+    "折叠入口展开当天全部 11 项，日程无丢失",
+    "折叠列表可打开完整日程编辑器",
+    "小窗口自动显示彩色点，保留更多入口",
+    "彩色点可点击并打开对应日程详情",
+    "方向键在日期网格中移动焦点与选择",
+    "键盘展开/关闭完整日程后恢复日期焦点",
+    "1380×900 / 67%：网格铺满，无日程越界、日期居中且响应正常",
+    "1000×680 / 80%：网格铺满，无日程越界、日期居中且响应正常",
+    "1600×1000 / 100%：网格铺满，无日程越界、日期居中且响应正常",
+    "1000×680 / 125%：网格铺满，无日程越界、日期居中且响应正常",
+    "1380×900 / 150%：网格铺满，无日程越界、日期居中且响应正常",
+    "1000×680 / 175%：网格铺满，无日程越界、日期居中且响应正常",
+    "1000×680 / 200%：网格铺满，无日程越界、日期居中且响应正常",
+    "200% 缩放下当天完整列表仍有可滚动阅读空间",
+    "1920×1080 / 100%：网格铺满，无日程越界、日期居中且响应正常",
+    "连续 48 次窗口/缩放变化后仍可交互，无尺寸残留",
+    "纯缩放期间没有重复数据库读取或 DAV 网络请求",
+    "重新展开侧栏后网格跟随容器铺满",
+    "深色模式仍无文字或胶囊越界",
+    "四视图连续往返四轮，未挂载旧月视图且保持可交互",
+    "缩放和密集日程期间 Renderer 无未处理异常"
+  ],
+  "errors": [],
+  "samples": [
+    {
+      "windowWidth": 1380,
+      "windowHeight": 900,
+      "zoom": 0.67,
+      "elapsedMs": 204,
+      "viewport": [
+        2039,
+        1290
+      ],
+      "width": 1788.805908203125,
+      "height": 1050.77734375,
+      "areaWidth": 1789,
+      "mode": "capsules",
+      "overflow": false,
+      "centering": 0.5052976608276367,
+      "horizontalPageOverflow": false,
+      "cells": 42
+    },
+    {
+      "windowWidth": 1000,
+      "windowHeight": 680,
+      "zoom": 0.8,
+      "elapsedMs": 207,
+      "viewport": [
+        1232,
+        805
+      ],
+      "width": 982.5,
+      "height": 566.171875,
+      "areaWidth": 982,
+      "mode": "capsules",
+      "overflow": false,
+      "centering": 0.42317771911621094,
+      "horizontalPageOverflow": false,
+      "cells": 42
+    },
+    {
+      "windowWidth": 1600,
+      "windowHeight": 1000,
+      "zoom": 1,
+      "elapsedMs": 197,
+      "viewport": [
+        1586,
+        964
+      ],
+      "width": 1336,
+      "height": 726.3333740234375,
+      "areaWidth": 1336,
+      "mode": "capsules",
+      "overflow": false,
+      "centering": 0.3385467529296875,
+      "horizontalPageOverflow": false,
+      "cells": 42
+    },
+    {
+      "windowWidth": 1000,
+      "windowHeight": 680,
+      "zoom": 1.25,
+      "elapsedMs": 207,
+      "viewport": [
+        789,
+        515
+      ],
+      "width": 776.5333862304688,
+      "height": 360.0000305175781,
+      "areaWidth": 777,
+      "mode": "dots",
+      "overflow": false,
+      "centering": 0.26668834686279297,
+      "horizontalPageOverflow": false,
+      "cells": 42
+    },
+    {
+      "windowWidth": 1380,
+      "windowHeight": 900,
+      "zoom": 1.5,
+      "elapsedMs": 205,
+      "viewport": [
+        910,
+        576
+      ],
+      "width": 900.4444580078125,
+      "height": 360,
+      "areaWidth": 900,
+      "mode": "dots",
+      "overflow": false,
+      "centering": 0.44792938232421875,
+      "horizontalPageOverflow": false,
+      "cells": 42
+    },
+    {
+      "windowWidth": 1000,
+      "windowHeight": 680,
+      "zoom": 1.75,
+      "elapsedMs": 197,
+      "viewport": [
+        563,
+        368
+      ],
+      "width": 554.6666870117188,
+      "height": 360,
+      "areaWidth": 555,
+      "mode": "dots",
+      "overflow": false,
+      "centering": 0.3809528350830078,
+      "horizontalPageOverflow": false,
+      "cells": 42
+    },
+    {
+      "windowWidth": 1000,
+      "windowHeight": 680,
+      "zoom": 2,
+      "elapsedMs": 199,
+      "viewport": [
+        493,
+        322
+      ],
+      "width": 485.3333435058594,
+      "height": 360,
+      "areaWidth": 485,
+      "mode": "dots",
+      "overflow": false,
+      "centering": 0.5000114440917969,
+      "horizontalPageOverflow": false,
+      "cells": 42
+    },
+    {
+      "windowWidth": 1920,
+      "windowHeight": 1080,
+      "zoom": 1,
+      "elapsedMs": 213,
+      "viewport": [
+        1906,
+        1044
+      ],
+      "width": 1906,
+      "height": 806.3333740234375,
+      "areaWidth": 1906,
+      "mode": "capsules",
+      "overflow": false,
+      "centering": 0.33856201171875,
+      "horizontalPageOverflow": false,
+      "cells": 42
+    }
+  ],
+  "rapidResizeCount": 48,
+  "eventResources": 321
+}

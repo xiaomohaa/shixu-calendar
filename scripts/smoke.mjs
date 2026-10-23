@@ -19,15 +19,20 @@ async function launch() {
   app = await electron.launch({ ...(process.env.SHIXU_EXECUTABLE ? { executablePath:resolve(process.env.SHIXU_EXECUTABLE), args:[] } : { args:['.'] }), env, timeout:60000 });
   const page = await app.firstWindow();
   page.on('pageerror',error=>errors.push(error.message));
-  await page.waitForFunction(() => !!window.shixu && document.querySelector('.fc'),null,{timeout:30000});
+  await page.waitForFunction(() => !!window.shixu && document.querySelector('.month-grid,.fc'),null,{timeout:30000});
   return page;
 }
+async function waitForAsync(page, predicate) {
+  const deadline=Date.now()+30000;
+  while(Date.now()<deadline){if(await page.evaluate(predicate))return;await new Promise(resolve=>setTimeout(resolve,50));}
+  throw new Error('等待数据状态超时');
+}
 async function openCalendarEvent(page, title) {
-  let event = page.locator('.fc-event:visible').filter({hasText:title}).first();
-  if (!await event.count()) {
-    const cell = page.locator('.fc-daygrid-day').filter({has:page.locator('.fc-event').filter({hasText:title})}).first();
-    await cell.locator('.fc-daygrid-more-link').click();
-    event = page.locator('.fc-popover .fc-event:visible').filter({hasText:title}).first();
+  let event=page.getByRole('button',{name:new RegExp(title)}).and(page.locator('.month-event:visible')).first();
+  if(!await event.count()) {
+    const day=await page.evaluate(async title=>(await window.shixu.events('2026-01-01','2026-12-31')).find(e=>e.title===title).start.slice(0,10),title);
+    await page.locator(`.month-cell[data-date="${day}"] .month-more`).click();
+    event=page.locator('.day-agenda .agenda-event').filter({hasText:title}).first();
   }
   await event.click();
 }
@@ -56,22 +61,22 @@ try {
   check((await page.locator('.version-heading').innerText()).includes(updater.currentVersion),'关于与更新显示真实主进程版本');
   if(updater.mode==='unpacked' || updater.mode==='portable') check((await page.locator('.update-status').innerText()).includes('退出后替换应用文件'),'解压版和便携版明确提示手动替换更新');
   await page.getByRole('button',{name:'关闭面板'}).click();
-  const dateAlignment = await page.locator('.fc-daygrid-day').evaluateAll(cells => cells.map(cell => {
+  const dateAlignment = await page.locator('.month-cell').evaluateAll(cells => cells.map(cell => {
     const number = cell.querySelector('.solar-date'), lunar = cell.querySelector('.lunar-date');
     if (!number || !lunar) return 999;
     const c=cell.getBoundingClientRect(), n=number.getBoundingClientRect();
     return Math.abs(n.x+n.width/2-c.x-c.width/2);
   }));
   check(dateAlignment.length===42 && Math.max(...dateAlignment)<=1,'月视图 42 个日期数字水平居中，误差不超过 1px');
-  check((await page.locator('.fc-daygrid-day[data-date="2026-10-23"] .lunar-date').innerText())==='霜降','日期下方显示农历节气');
-  check((await page.locator('.fc-daygrid-day[data-date="2026-10-01"] .day-status').innerText())==='休' && (await page.locator('.fc-daygrid-day[data-date="2026-10-10"] .day-status').innerText())==='班','中国假期和调休在同一月显示休班标记');
-  await page.locator('.fc-daygrid-day[data-date="2026-10-10"] .solar-date').click();
+  check((await page.locator('.month-cell[data-date="2026-10-23"] .lunar-date').innerText())==='霜降','日格中显示农历节气');
+  check((await page.locator('.month-cell[data-date="2026-10-01"] .day-status').innerText())==='休' && (await page.locator('.month-cell[data-date="2026-10-10"] .day-status').innerText())==='班','中国假期和调休在同一月显示休班标记');
+  await page.locator('.month-cell[data-date="2026-10-10"] .solar-date').click();
   await page.locator('.almanac[data-date="2026-10-10"]').waitFor();
   check((await page.locator('.almanac .holiday-line').innerText()).includes('调休上班'),'点击日期联动补班详情');
   await page.locator('.almanac-details summary').click();
   check((await page.locator('.almanac-details').innerText()).includes('10月10日调休上班'),'完整黄历可展开查看全部宜忌与假期安排');
   await page.locator('.almanac-details summary').click();
-  await page.locator('.fc-daygrid-day[data-date="2026-10-23"] .solar-date').click();
+  await page.locator('.month-cell[data-date="2026-10-23"] .solar-date').click();
   await page.locator('.almanac[data-date="2026-10-23"]').waitFor();
   check((await page.locator('.almanac .lunar-heading').innerText()).includes('九月十四') && await page.locator('.almanac-row').count()===2,'所选日期展示完整农历与黄历宜忌');
   check(fixture.requests.length===0,'查看农历黄历和节假日不访问 DAV 或写入账户');
@@ -88,7 +93,7 @@ try {
   await page.getByText('连接成功，发现 1 个日历').waitFor();
   check(true,'UI 表单通过真实 HTTP 发现主体、home-set 和日历');
   await page.getByRole('button',{name:'保存账户',exact:true}).click();
-  await page.waitForFunction(async()=>{const s=await window.shixu.snapshot();return s.accounts.length===1 && !s.syncing.length && s.resources===1;});
+  await waitForAsync(page, async()=>{const s=await window.shixu.snapshot();return s.accounts.length===1 && !s.syncing.length && s.resources===1;});
   await page.getByRole('button',{name:'关闭面板'}).click();
   const data = await page.evaluate(()=>window.shixu.snapshot());
   check(!JSON.stringify(data).includes('fixture-only-secret') && !('password' in data.accounts[0]),'IPC 快照不返回密码或密文');
@@ -100,14 +105,14 @@ try {
   await page.getByRole('button',{name:'新建日程',exact:true}).first().click();
   await page.getByLabel('日程标题',{exact:true}).fill('桌面创建验收');
   await page.getByRole('button',{name:'保存日程',exact:true}).click();
-  await page.waitForFunction(async()=> (await window.shixu.snapshot()).pending===1);
+  await waitForAsync(page, async()=> (await window.shixu.snapshot()).pending===1);
   check(true,'UI 新建日程持久化到 SQLite 待同步队列');
   await page.evaluate(()=>window.shixu.sync());
   check(fixture.resources.size===2,'新建日程通过条件 PUT 写入 DAV 服务');
   await openCalendarEvent(page, '桌面创建验收');
   await page.getByLabel('日程标题',{exact:true}).fill('桌面编辑验收');
   await page.getByRole('button',{name:'保存日程',exact:true}).click();
-  await page.waitForFunction(async()=> (await window.shixu.snapshot()).pending===1);
+  await waitForAsync(page, async()=> (await window.shixu.snapshot()).pending===1);
   await page.evaluate(()=>window.shixu.sync());
   check([...fixture.resources.values()].some(r=>r.ics.includes('桌面编辑验收')),'编辑日程通过带 ETag 的 PUT 更新');
   for (const name of ['周','日','列表','月']) { await page.getByRole('button',{name,exact:true}).click(); await page.waitForTimeout(100); }
@@ -141,14 +146,15 @@ try {
   check(offline.some(e=>e.title==='桌面编辑验收'),'关闭重启后，离线缓存可读取');
   const preferences=await again.evaluate(()=>window.shixu.snapshot());
   check(preferences.settings.theme==='dark' && preferences.settings.autoSync===false,'主题和同步设置重启后保留');
-  check((await again.locator('.fc-daygrid-day[data-date="2026-10-23"] .lunar-date').innerText())==='霜降','离线重启后农历节气仍可显示');
+  check((await again.locator('.month-cell[data-date="2026-10-23"] .lunar-date').innerText())==='霜降','离线重启后农历节气仍可显示');
   fixture.status=0;
   await openCalendarEvent(again, '桌面编辑验收');
   await again.getByRole('button',{name:'删除',exact:true}).click();
   await again.getByRole('button',{name:'确认删除',exact:true}).click();
-  await again.waitForFunction(async()=> (await window.shixu.snapshot()).pending===1);
+  await waitForAsync(again, async()=> (await window.shixu.snapshot()).pending===1);
   await again.evaluate(()=>window.shixu.sync());
   check(fixture.resources.size===1,'恢复连接后 DELETE 更新远程服务');
   check(errors.length===0,`Renderer 无未处理异常${errors.length?`: ${errors.join(';')}`:''}`);
-  await writeFile(join(root,'result.json'),JSON.stringify({ results, errors },null,2));
+  const version=(await again.evaluate(()=>window.shixu.updateState())).currentVersion;
+  await writeFile(join(root,'result.json'),JSON.stringify({ version, results, errors },null,2));
 } finally { if(app) await app.close(); await fixture.close(); }

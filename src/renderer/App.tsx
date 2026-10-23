@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -6,7 +6,7 @@ import listPlugin from '@fullcalendar/list';
 import interactionPlugin from '@fullcalendar/interaction';
 import luxonPlugin from '@fullcalendar/luxon3';
 import zhCn from '@fullcalendar/core/locales/zh-cn';
-import type { EventApi, EventInput as FCEvent, EventChangeArg } from '@fullcalendar/core';
+import type { EventApi, EventInput as FCEvent, DatesSetArg } from '@fullcalendar/core';
 import { DateTime } from 'luxon';
 import { CalendarDays, ChevronLeft, ChevronRight, Plus, Search, RefreshCw, Settings2, PanelLeftClose, PanelLeftOpen, Cloud, CloudOff, CircleCheck, TriangleAlert, X, Repeat2, MapPin } from 'lucide-react';
 import type { CalendarEvent, EventInput, Snapshot } from '../shared/contracts';
@@ -17,15 +17,20 @@ import { Almanac } from './Almanac';
 import { MonthDate } from './MonthDate';
 import { calendarDateKey } from '../calendar/chineseCalendar';
 import { UpdateNotice } from './Updates';
+import { MonthGrid } from './MonthGrid';
+import { monthDays } from '../calendar/monthLayout';
+const calendarPlugins = [dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin, luxonPlugin];
 
 export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null), [events, setEvents] = useState<CalendarEvent[]>([]);
   const [view, setView] = useState('dayGridMonth'), [title, setTitle] = useState(''), [selected, setSelected] = useState(DateTime.local().toISODate()!);
+  const [month, setMonth] = useState(DateTime.local().startOf('month').toISODate()!);
   const [miniMonth, setMiniMonth] = useState<DateTime>(DateTime.local().startOf('month')), [sidebar, setSidebar] = useState(true);
   const [searchOpen, setSearchOpen] = useState(false), [query, setQuery] = useState(''), [editor, setEditor] = useState<EventInput | null>(null), [settingsTab, setSettingsTab] = useState<string | null>(null);
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [loading, setLoading] = useState(true);
   const calendarRef = useRef<FullCalendar>(null), range = useRef({ start: DateTime.local().startOf('month').minus({ days: 7 }).toISO()!, end: DateTime.local().endOf('month').plus({ days: 7 }).toISO()! });
   const loadId = useRef(0), booted = useRef(false), searchRef = useRef<HTMLInputElement>(null);
+  const calendarContainer = useRef<HTMLDivElement>(null);
   const refresh = useCallback(async () => {
     if (!window.shixu) { setError('请使用 Electron 桌面应用打开此日历。浏览器预览无法访问本地数据库。'); setLoading(false); return; }
     const id = ++loadId.current;
@@ -39,6 +44,22 @@ export function App() {
   }, []);
   useEffect(() => { void refresh(); return window.shixu?.onChange(() => void refresh()); }, [refresh]);
   useEffect(() => window.shixu?.onOpenSettings(tab => setSettingsTab(tab)), []);
+  useEffect(() => {
+    if (view !== 'dayGridMonth' || !snapshot) return;
+    const days = monthDays(month, snapshot.settings.firstDay, snapshot.settings.timezone);
+    const next = { start: DateTime.fromISO(days[0], { zone: snapshot.settings.timezone }).toISO()!, end: DateTime.fromISO(days[41], { zone: snapshot.settings.timezone }).plus({ days: 1 }).toISO()! };
+    if (next.start !== range.current.start || next.end !== range.current.end) { range.current = next; void refresh(); }
+  }, [month, view, snapshot?.settings.firstDay, snapshot?.settings.timezone, refresh]);
+  useEffect(() => {
+    if (view === 'dayGridMonth') return;
+    const element = calendarContainer.current; if (!element) return;
+    let timer: ReturnType<typeof setTimeout>, active = true, previous = '';
+    const resize = () => { const size = `${element.clientWidth}:${element.clientHeight}`; if (size === previous) return; previous = size; clearTimeout(timer); timer = setTimeout(() => { if (active) calendarRef.current?.getApi().updateSize(); }, 80); };
+    const observer = new ResizeObserver(resize); observer.observe(element);
+    void document.fonts.ready.then(() => { if (active) { previous = ''; resize(); } });
+    return () => { active = false; observer.disconnect(); clearTimeout(timer); };
+  }, [view, loading]);
+  useEffect(() => { const media = matchMedia('(max-width: 900px)'); const apply = () => { if (media.matches) setSidebar(false); }; apply(); media.addEventListener('change', apply); return () => media.removeEventListener('change', apply); }, []);
   useEffect(() => { const media = matchMedia('(prefers-color-scheme: dark)'); const apply = () => { document.documentElement.dataset.theme = snapshot?.settings.theme === 'dark' || (snapshot?.settings.theme === 'system' && media.matches) ? 'dark' : 'light'; }; apply(); media.addEventListener('change', apply); return () => media.removeEventListener('change', apply); }, [snapshot?.settings.theme]);
   useEffect(() => { if (searchOpen) searchRef.current?.focus(); }, [searchOpen]);
   useEffect(() => { if (notice) { const t = setTimeout(() => setNotice(''), 5000); return () => clearTimeout(t); } }, [notice]);
@@ -49,10 +70,32 @@ export function App() {
     const now = DateTime.now().setZone(pref.timezone), base = start ? DateTime.fromISO(start, { zone: pref.timezone }) : DateTime.fromISO(selected, { zone: pref.timezone }).set({ hour: now.hour + 1, minute: 0 });
     setEditor({ calendarId: pref.defaultCalendar || snapshot.calendars.find(c => !c.readOnly)!.id, title: '', start: allDay ? base.toISODate()! : base.toISO()!, end: end || (allDay ? base.plus({ days: 1 }).toISODate()! : base.plus({ minutes: pref.duration }).toISO()!), allDay, timezone: pref.timezone, location: '', description: '', rrule: '', reminder: pref.reminder, scope: 'series' });
   };
-  useEffect(() => { const key = (e: KeyboardEvent) => { const editing = ['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName); if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); setSearchOpen(true); } if (e.key === 'Escape' && !editor && !settingsTab) { setSearchOpen(false); setQuery(''); } if (!editing && !editor && !settingsTab && e.key.toLowerCase() === 'n') create(); if (!editing && !editor && !settingsTab && e.key.toLowerCase() === 't') calendarRef.current?.getApi().today(); }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key); });
+  useEffect(() => { const key = (e: KeyboardEvent) => { const editing = ['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName); if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); setSearchOpen(true); } if (e.key === 'Escape' && !editor && !settingsTab) { setSearchOpen(false); setQuery(''); } if (!editing && !editor && !settingsTab && e.key.toLowerCase() === 'n') create(); if (!editing && !editor && !settingsTab && e.key.toLowerCase() === 't') go(DateTime.now().setZone(snapshot?.settings.timezone || 'local').toISODate()!); }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key); });
   const openEvent = (ev: CalendarEvent) => void execute(async () => { setEditor(await window.shixu.eventDetail(ev.resourceId, ev.recurring ? 'instance' : 'series', ev.recurrenceId)); });
-  const go = (date: string) => { setSelected(date); setMiniMonth(DateTime.fromISO(date).startOf('month')); calendarRef.current?.getApi().gotoDate(date); };
-  const setViewTo = (next: string) => { setView(next); calendarRef.current?.getApi().changeView(next); };
+  const go = (date: string) => { setSelected(date); setMiniMonth(DateTime.fromISO(date).startOf('month')); if (view === 'dayGridMonth') setMonth(DateTime.fromISO(date).startOf('month').toISODate()!); else calendarRef.current?.getApi().gotoDate(date); };
+  const navigate = (direction: number) => { if (view === 'dayGridMonth') go(DateTime.fromISO(month).plus({ months: direction }).toISODate()!); else if (direction < 0) calendarRef.current?.getApi().prev(); else calendarRef.current?.getApi().next(); };
+  const setViewTo = (next: string) => {
+    // Never ask FullCalendar to mount its old month layout while React is
+    // replacing it with our fixed grid. Dense event measurement can otherwise
+    // block the click before the replacement is committed.
+    if (next === 'dayGridMonth') { setMonth(DateTime.fromISO(selected).startOf('month').toISODate()!); setView(next); return; }
+    if (view === 'dayGridMonth') { setView(next); return; }
+    calendarRef.current?.getApi().changeView(next);
+  };
+  const datesSet = useCallback((info: DatesSetArg) => {
+    setTitle(info.view.title); setView(info.view.type); const current = DateTime.fromJSDate(info.view.calendar.getDate()).setZone(snapshot?.settings.timezone || 'local'); setSelected(current.toISODate()!); setMiniMonth(current.startOf('month'));
+    const next = { start: info.start.toISOString(), end: info.end.toISOString() };
+    if (range.current.start !== next.start || range.current.end !== next.end) { range.current = next; void refresh(); }
+  }, [refresh, snapshot?.settings.timezone]);
+  const moveMonthEvent = (event: CalendarEvent, target: string, origin: string) => {
+    const delta = DateTime.fromISO(target, { zone: 'UTC' }).diff(DateTime.fromISO(origin, { zone: 'UTC' }), 'days').days;
+    if (!delta || !Number.isInteger(delta)) return;
+    void execute(async () => {
+      const input = await window.shixu.eventDetail(event.resourceId, event.recurring ? 'instance' : 'series', event.recurrenceId);
+      const shift = (date: string) => { const next = DateTime.fromISO(date, { zone: input.timezone }).plus({ days: delta }); return input.allDay ? next.toISODate()! : next.toISO({ includeOffset: !input.floating })!; };
+      await window.shixu.saveEvent({ ...input, start: shift(input.start), end: shift(input.end) });
+    }, '时间已调整，等待同步');
+  };
   const moveEvent = (info: { event: EventApi; revert: () => void }) => {
     const ev = events.find(e => e.id === info.event.id); if (!ev || !info.event.start) { info.revert(); return; }
     void execute(async () => {
@@ -60,11 +103,11 @@ export function App() {
     });
   };
   const prefs = snapshot?.settings;
-  const filtered = events.filter(e => `${e.title} ${e.location} ${e.description}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
-  const fcEvents: FCEvent[] = filtered.map(e => {
+  const filtered = useMemo(() => events.filter(e => `${e.title} ${e.location} ${e.description}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())), [events, query]);
+  const fcEvents: FCEvent[] = useMemo(() => filtered.map(e => {
     const c = snapshot?.calendars.find(c => c.id === e.calendarId), color = c?.color || '#d65c4f';
     return { id: e.id, title: e.title, start: e.start, end: e.end, allDay: e.allDay, backgroundColor: color, borderColor: color, textColor: '#fdfcfb', editable: !c?.readOnly && !e.conflict, classNames: [e.pending ? 'event-pending' : '', e.conflict ? 'event-conflict' : ''], extendedProps: { ...e, color } };
-  });
+  }), [filtered, snapshot?.calendars]);
   const firstDay = prefs?.firstDay ?? 1, offset = (miniMonth.weekday % 7 - firstDay + 7) % 7;
   const miniStart = miniMonth.minus({ days: offset }), days = Array.from({ length: 42 }, (_, i) => miniStart.plus({ days: i }));
   const today = DateTime.now().setZone(prefs?.timezone || 'local').toISODate();
@@ -83,15 +126,21 @@ export function App() {
       </div>
       <div className="sidebar-footer"><button onClick={() => setSettingsTab('accounts')}><Settings2 size={17}/>设置</button><span title={snapshot?.accounts.find(a => a.error)?.error || '本地缓存可离线使用'}>{snapshot?.syncing.length ? <RefreshCw size={13} className="spin"/> : snapshot?.accounts.some(a => a.error) ? <CloudOff size={13}/> : <CircleCheck size={13}/>} {snapshot?.pending ? `${snapshot.pending} 项待同步` : '本地已保存'}</span></div>
     </aside>
-    <main className="main-content"><header className="toolbar"><div className="toolbar-left"><IconButton label={sidebar ? '收起侧边栏' : '展开侧边栏'} onClick={() => setSidebar(v => !v)}>{sidebar ? <PanelLeftClose size={19}/> : <PanelLeftOpen size={19}/>}</IconButton><div className="period-navigation"><IconButton label="上一周期" onClick={() => calendarRef.current?.getApi().prev()}><ChevronLeft size={18}/></IconButton><IconButton label="下一周期" onClick={() => calendarRef.current?.getApi().next()}><ChevronRight size={18}/></IconButton></div><button className="today-button" onClick={() => go(today!)}>今天</button></div><div className="view-switch" aria-label="日历视图">{[{ id: 'dayGridMonth', label: '月' }, { id: 'timeGridWeek', label: '周' }, { id: 'timeGridDay', label: '日' }, { id: 'listMonth', label: '列表' }].map(v => <button key={v.id} aria-pressed={view === v.id} className={view === v.id ? 'active' : ''} onClick={() => setViewTo(v.id)}>{v.label}</button>)}</div><div className="toolbar-right"><IconButton label="搜索日程" onClick={() => setSearchOpen(v => !v)}><Search size={19}/></IconButton><IconButton label={snapshot?.syncing.length ? '取消同步' : '同步日历'} disabled={!snapshot?.accounts.length} onClick={() => void execute(() => snapshot?.syncing.length ? window.shixu.cancelSync() : window.shixu.sync(), snapshot?.syncing.length ? '同步已取消' : '同步完成')}><RefreshCw size={18} className={snapshot?.syncing.length ? 'spin' : ''}/></IconButton><span className="toolbar-divider"/><IconButton label="新建日程" onClick={() => create()}><Plus size={22}/></IconButton></div></header>
-      <div className="calendar-heading"><div><h1>{prefs?.dateFormat === 'numeric' ? title.replaceAll('年', '/').replaceAll('月', '/').replaceAll('日', '').replace(/\/(?=$|[ –])/g, '') : title || DateTime.now().toFormat('yyyy年M月')}</h1><span>{query ? `当前日期范围内，找到 ${filtered.length} 项日程` : `${prefs?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone} · ${view === 'dayGridMonth' ? '每一天，都值得好好安排' : '为重要的事，留出时间'}`}</span></div>{snapshot?.conflicts.length ? <button className="conflict-pill" onClick={() => setSettingsTab('conflicts')}><TriangleAlert size={15}/>{snapshot.conflicts.length} 个冲突待处理</button> : snapshot?.pending ? <span className="pending-pill">{snapshot.pending} 项本地修改待同步</span> : <span className="month-caption">{DateTime.fromISO(selected).setLocale('zh-cn').toFormat('cccc')}</span>}</div>
+    <main className="main-content"><header className="toolbar">
+      <div className="toolbar-left"><IconButton label={sidebar ? '收起侧边栏' : '展开侧边栏'} onClick={() => setSidebar(v => !v)}>{sidebar ? <PanelLeftClose size={19}/> : <PanelLeftOpen size={19}/>}</IconButton><IconButton label="新建日程" onClick={() => create()}><Plus size={23}/></IconButton><IconButton label="打开设置" onClick={() => setSettingsTab('accounts')}><Settings2 size={18}/></IconButton></div>
+      <div className="view-switch" aria-label="日历视图">{[{ id: 'timeGridDay', label: '日' }, { id: 'timeGridWeek', label: '周' }, { id: 'dayGridMonth', label: '月' }, { id: 'listMonth', label: '列表' }].map(v => <button key={v.id} aria-pressed={view === v.id} className={view === v.id ? 'active' : ''} onClick={() => setViewTo(v.id)}>{v.label}</button>)}</div>
+      <div className="toolbar-right"><button className="toolbar-search" aria-label="搜索日程" onClick={() => setSearchOpen(v => !v)}><Search size={18}/><span>搜索</span><kbd>Ctrl F</kbd></button><IconButton label={snapshot?.syncing.length ? '取消同步' : '同步日历'} disabled={!snapshot?.accounts.length} onClick={() => void execute(() => snapshot?.syncing.length ? window.shixu.cancelSync() : window.shixu.sync(), snapshot?.syncing.length ? '同步已取消' : '同步完成')}><RefreshCw size={18} className={snapshot?.syncing.length ? 'spin' : ''}/></IconButton></div>
+    </header>
+      <div className="calendar-heading"><div><h1>{view === 'dayGridMonth' ? DateTime.fromISO(month).toFormat(prefs?.dateFormat === 'numeric' ? 'yyyy/MM' : 'yyyy年M月') : prefs?.dateFormat === 'numeric' ? title.replaceAll('年', '/').replaceAll('月', '/').replaceAll('日', '').replace(/\/(?=$|[ –])/g, '') : title}</h1><span>{query ? `当前日期范围内，找到 ${filtered.length} 项日程` : prefs?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}</span></div>
+        <div className="heading-trailing">{snapshot?.conflicts.length ? <button className="conflict-pill" onClick={() => setSettingsTab('conflicts')}><TriangleAlert size={15}/>{snapshot.conflicts.length} 个冲突</button> : snapshot?.pending ? <span className="pending-pill">{snapshot.pending} 项待同步</span> : null}<div className="period-navigation"><IconButton label="上一周期" onClick={() => navigate(-1)}><ChevronLeft size={19}/></IconButton><button className="today-button" onClick={() => go(today!)}>今天</button><IconButton label="下一周期" onClick={() => navigate(1)}><ChevronRight size={19}/></IconButton></div></div>
+      </div>
       {searchOpen && <div className="search-bar"><Search size={18}/><input ref={searchRef} aria-label="搜索标题、地点和备注" placeholder="搜索标题、地点和备注…" value={query} onChange={e => setQuery(e.target.value)}/><span>当前日期范围</span><IconButton label="关闭搜索" onClick={() => { setSearchOpen(false); setQuery(''); }}><X size={16}/></IconButton></div>}
       {error && <div className="app-error" role="alert"><TriangleAlert size={17}/><span>{error}</span><IconButton label="关闭错误提示" onClick={() => setError('')}><X size={15}/></IconButton></div>}
       {snapshot?.diagnostics.map(d => <div className="app-error" key={d}><TriangleAlert size={16}/>{d}</div>)}
       <UpdateNotice open={() => setSettingsTab('updates')}/>
       {!loading && snapshot?.accounts.length === 0 && <div className="onboarding-strip"><Cloud size={18}/><div><strong>从你的第一本日历开始</strong><span>连接 CalDAV 账户，日程即可在这里出现。</span></div><button onClick={() => setSettingsTab('accounts')}>连接账户<ChevronRight size={15}/></button></div>}
-      <div className="calendar-container">{loading ? <div className="calendar-loading">正在读取本地日历…</div> : <FullCalendar key={booted.current ? 'calendar' : 'initial'} ref={calendarRef} plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin, luxonPlugin]} locale={zhCn} initialView={prefs?.view || view} headerToolbar={false} height="100%" firstDay={firstDay} timeZone={prefs?.timezone || 'local'} events={fcEvents} selectable selectMirror editable nowIndicator dayMaxEvents={true} moreLinkText={n => `还有 ${n} 项`} allDayText="全天" noEventsContent="这段时间没有安排，留一点时间给自己。" eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: prefs?.timeFormat === '12' }} slotLabelFormat={{ hour: 'numeric', minute: '2-digit', hour12: prefs?.timeFormat === '12' }} slotMinTime="00:00:00" slotMaxTime="24:00:00" scrollTime="08:00:00" slotDuration="00:30:00" defaultTimedEventDuration={{ minutes: prefs?.duration || 60 }} weekends fixedWeekCount displayEventTime
-        datesSet={info => { setTitle(info.view.title); setView(info.view.type); const current = DateTime.fromJSDate(info.view.calendar.getDate()).setZone(prefs?.timezone || 'local'); setSelected(current.toISODate()!); setMiniMonth(current.startOf('month')); range.current = { start: info.start.toISOString(), end: info.end.toISOString() }; void refresh(); }}
+      <div className="calendar-container" ref={calendarContainer}>{loading ? <div className="calendar-loading">正在读取本地日历…</div> : view === 'dayGridMonth' ? <MonthGrid month={month} firstDay={firstDay} timezone={prefs?.timezone || 'local'} selected={selected} timeFormat={prefs?.timeFormat || '24'} events={filtered} calendars={snapshot?.calendars || []} select={setSelected} create={create} open={openEvent} move={moveMonthEvent}/> : <FullCalendar key={booted.current ? 'calendar' : 'initial'} ref={calendarRef} plugins={calendarPlugins} locale={zhCn} initialView={view} initialDate={selected} handleWindowResize={false} headerToolbar={false} height="100%" firstDay={firstDay} timeZone={prefs?.timezone || 'local'} events={fcEvents} selectable selectMirror editable nowIndicator dayMaxEvents={true} moreLinkText={n => `还有 ${n} 项`} allDayText="全天" noEventsContent="这段时间没有安排，留一点时间给自己。" eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: prefs?.timeFormat === '12' }} slotLabelFormat={{ hour: 'numeric', minute: '2-digit', hour12: prefs?.timeFormat === '12' }} slotMinTime="00:00:00" slotMaxTime="24:00:00" scrollTime="08:00:00" slotDuration="00:30:00" defaultTimedEventDuration={{ minutes: prefs?.duration || 60 }} weekends fixedWeekCount displayEventTime
+        datesSet={datesSet}
         dateClick={info => { const date = info.dateStr.slice(0, 10); setSelected(date); if (info.jsEvent.detail === 2) create(info.dateStr, undefined, info.allDay); }}
         select={info => { if (info.allDay && Date.parse(info.endStr) - Date.parse(info.startStr) <= 86400000) return; create(info.startStr, info.endStr, info.allDay); calendarRef.current?.getApi().unselect(); }}
         eventClick={info => { const event = events.find(e => e.id === info.event.id); if (event) openEvent(event); }}
