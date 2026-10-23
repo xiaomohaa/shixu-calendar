@@ -24,6 +24,25 @@ try {
   const page = browser.contexts().flatMap(context => context.pages()).find(page => page.url().startsWith('http://tauri.localhost/'));
   if (!page) throw new Error('Tauri page not found');
   await page.locator('.month-grid').waitFor({ timeout: 20000 });
+  const initialWeight = await page.locator('.month-weekdays span').first().evaluate(el => Number(getComputedStyle(el).fontWeight));
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('button', { name: '显示设置', exact: true }).click();
+  await page.getByRole('checkbox', { name: '启用粗体显示' }).check();
+  await page.waitForFunction(() => document.documentElement.dataset.boldText === 'true');
+  if (!(await page.evaluate(() => window.shixu.snapshot())).settings.boldText) throw new Error('Bold preference was not saved');
+  const boldWeight = await page.locator('.month-weekdays span').first().evaluate(el => Number(getComputedStyle(el).fontWeight));
+  if (boldWeight < 650 || boldWeight <= initialWeight) throw new Error('Bold preference did not increase the rendered font weight');
+  await page.reload();
+  await page.locator('.month-grid').waitFor();
+  await page.waitForFunction(() => document.documentElement.dataset.boldText === 'true');
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('button', { name: '显示设置', exact: true }).click();
+  if (!(await page.getByRole('checkbox', { name: '启用粗体显示' }).isChecked())) throw new Error('Saved bold preference was lost after reload');
+  await page.getByRole('checkbox', { name: '启用粗体显示' }).uncheck();
+  await page.waitForFunction(() => document.documentElement.dataset.boldText === 'false');
+  const restoredWeight = await page.locator('.month-weekdays span').first().evaluate(el => Number(getComputedStyle(el).fontWeight));
+  if (restoredWeight !== initialWeight) throw new Error('Disabling bold did not restore the original font weight');
+  await page.getByRole('button', { name: '关闭面板', exact: true }).click();
   const inlineScriptRan = await page.evaluate(() => {
     const script = document.createElement('script');
     script.textContent = 'window.__shixuCspProbe = true';
@@ -51,7 +70,7 @@ try {
   const exited = new Promise(resolve => app.once('exit', resolve));
   native(`$h = [System.IntPtr]::new(${handle}); $null = [ShixuSmoke.Win]::PostMessage($h,16,[System.IntPtr]::Zero,[System.IntPtr]::Zero)`);
   await Promise.race([exited, new Promise((_, reject) => setTimeout(() => reject(new Error('Window close did not quit app')), 5000))]);
-  console.log('PASS: Tauri close-to-tray, hidden background, reopen, close-to-quit');
+  console.log('PASS: bold display UI, persistence, restoration, CSP, single instance and tray lifecycle');
 } finally {
   await browser?.close().catch(() => {});
   if (app.exitCode === null) app.kill();

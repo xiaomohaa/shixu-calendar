@@ -1,0 +1,9 @@
+/* Explicit weights in the calendar need an override for the user's bold preference. */
+html[data-bold-text="true"] body,
+html[data-bold-text="true"] body :where(*) {
+  font-weight: 650 !important;
+}
+
+html[data-bold-text="true"] :is(h1, h2, h3, h4, h5, h6, strong, b) {
+  font-weight: 750 !important;
+}

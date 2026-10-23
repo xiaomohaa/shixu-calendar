@@ -63,6 +63,8 @@ struct Settings {
     date_format: String,
     auto_update_check: bool,
     close_to_tray: bool,
+    #[serde(default)]
+    bold_text: bool,
 }
 
 impl Settings {

@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
-import { CalendarDays, ChevronRight, Cloud, Database, Monitor, Plus, RefreshCw, ShieldCheck, Trash2, TriangleAlert, UserRound, Pause, Play, Download, Upload, Check, Moon, Sun, ArrowLeft } from 'lucide-react';
+import { Bold, CalendarDays, ChevronRight, Cloud, Database, Monitor, Plus, RefreshCw, ShieldCheck, Trash2, TriangleAlert, UserRound, Pause, Play, Download, Upload, Check, Moon, Sun, ArrowLeft } from 'lucide-react';
 import type { AccountInput, Calendar, Settings as Preferences, Snapshot } from '../shared/contracts';
 import { Busy, Field, IconButton, Panel } from './components';
 import { version as appVersion } from '../../package.json';
 import { version as tauriVersion } from '../../src-tauri/tauri.conf.json';
 import { UpdatesPanel } from "./Updates";
 import { DesktopSettings } from "./DesktopSettings";
-const sections = [{ id: "desktop", label: "启动与后台", icon: Monitor }, { id: "updates", label: "关于与更新", icon: Download }, { id: 'accounts', label: '账户与同步', icon: Cloud }, { id: 'calendar', label: '日历偏好', icon: CalendarDays }, { id: 'appearance', label: '外观', icon: Monitor }, { id: 'privacy', label: '数据与隐私', icon: ShieldCheck }, { id: 'conflicts', label: '同步冲突', icon: TriangleAlert }];
+const sections = [{ id: "desktop", label: "启动与后台", icon: Monitor }, { id: "updates", label: "关于与更新", icon: Download }, { id: 'accounts', label: '账户与同步', icon: Cloud }, { id: 'calendar', label: '日历偏好', icon: CalendarDays }, { id: 'display', label: '显示设置', icon: Bold }, { id: 'appearance', label: '外观', icon: Monitor }, { id: 'privacy', label: '数据与隐私', icon: ShieldCheck }, { id: 'conflicts', label: '同步冲突', icon: TriangleAlert }];
 const emptyAccount: AccountInput = { name: '', url: '', username: '', password: '', allowHttp: false, paused: false };
 const nativeTauri = !!window.__TAURI_INTERNALS__;
 const displayVersion = nativeTauri ? tauriVersion : appVersion;
@@ -18,6 +18,7 @@ export function SettingsPanel({ snapshot: s, close, refresh, initialTab = 'accou
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState(''), [found, setFound] = useState<Calendar[]>([]);
   const [inspecting, setInspecting] = useState<string | null>(null);
   useEffect(() => { setPrefs(p => ({ ...p, defaultCalendar: s.settings.defaultCalendar })); }, [s.settings.defaultCalendar]);
+  useEffect(() => { setPrefs(p => ({ ...p, boldText: s.settings.boldText })); }, [s.settings.boldText]);
   useEffect(() => { setPrefs(p => ({ ...p, autoUpdateCheck: s.settings.autoUpdateCheck, closeToTray: s.settings.closeToTray })); }, [s.settings.autoUpdateCheck, s.settings.closeToTray]);
   const set = <K extends keyof Preferences>(key: K, value: Preferences[K]) => setPrefs(p => ({ ...p, [key]: value }));
   const act = async (fn: () => Promise<unknown>, message = '') => { setBusy(true); setError(''); setMessage(''); try { await fn(); setMessage(message); refresh(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
@@ -52,6 +53,20 @@ export function SettingsPanel({ snapshot: s, close, refresh, initialTab = 'accou
       {tab === 'privacy' && <><h3>数据与隐私</h3><p className="section-description">日历留在你的设备，连接你选择的服务器。</p><div className="storage-summary"><Database size={28}/><div><strong>{(s.bytes / 1024).toFixed(1)} KB</strong><span>{s.resources} 个日程资源 · {s.pending} 个待提交操作</span></div></div><div className="privacy-row"><div><h4>本地日历缓存</h4><p>清除已同步缓存，保留离线修改和未解决冲突。</p></div><button disabled={busy} onClick={() => void act(() => window.shixu.clearCache(), '缓存处理完成')}>清除缓存</button></div><div className="privacy-row"><div><h4>备份与恢复偏好</h4><p>仅包含应用偏好，不包含密码、日程和账户凭据。</p></div><div><button disabled={busy} onClick={() => void act(async () => { if (await window.shixu.backup()) setMessage('偏好已备份'); })}><Download size={15}/>备份</button><button disabled={busy} onClick={() => void act(async () => { if (await window.shixu.restore()) { setPrefs((await window.shixu.snapshot()).settings); setMessage('偏好已恢复'); } })}><Upload size={15}/>恢复</button></div></div><div className="privacy-note"><ShieldCheck size={22}/><div><strong>密码由操作系统保护</strong><p>凭据使用 {credentialProtection} 加密。SQLite 中只保存密文。日程缓存以普通 SQLite 数据保存，请同时保护 Windows 账户和磁盘。</p><p>删除账户只会清除本地缓存及未同步修改，不会删除服务器上的日历。无遥测，无广告。</p></div></div><p className="form-hint">时序日历 {displayVersion} · {displayPlatform} / React / SQLite<br/>本地提醒要求应用保持运行。应用未签名，首次运行可能出现 Windows SmartScreen 提示。</p></>}
       {tab === 'conflicts' && <><h3>同步冲突</h3><p className="section-description">同一份日程在两处发生了修改。双方内容已完整保留。</p>{s.conflicts.length === 0 ? <div className="account-empty"><Check size={36} strokeWidth={1.2}/><h4>没有待处理的冲突</h4><p>所有版本都井然有序。</p></div> : s.conflicts.map(c => <div className="conflict-item" key={c.id}><div className="section-heading"><strong>日程版本冲突</strong><small>{new Date(c.createdAt).toLocaleString('zh-CN')}</small></div><button className="back-link" onClick={() => setInspecting(inspecting === c.id ? null : c.id)}>{inspecting === c.id ? '收起双方原始内容' : '查看双方原始内容'}<ChevronRight size={14}/></button>{inspecting === c.id && <div className="conflict-versions"><h4>本地版本</h4><pre>{c.localIcs}</pre><h4>服务器版本</h4><pre>{c.remoteIcs ?? '此日程已在服务器删除'}</pre></div>}<p className="form-hint">保留双方会把本地内容另存为一个新日程，再采用服务器版本；若本地原操作是删除，另存副本会保留删除前的内容。</p><div className="form-actions"><button disabled={busy || s.syncing.length > 0} onClick={() => void act(() => window.shixu.resolveConflict(c.id, 'remote'), '已采用服务器版本')}>使用服务器版本</button><button disabled={busy || s.syncing.length > 0} onClick={() => void act(() => window.shixu.resolveConflict(c.id, 'local'), '本地版本已加入待同步队列')}>使用本地版本</button><button className="primary" disabled={busy || s.syncing.length > 0} onClick={() => void act(() => window.shixu.resolveConflict(c.id, 'both'), '双方内容已保留')}>保留双方</button></div></div>)}</>}
       {tab === "desktop" && <DesktopSettings/>}
+      {tab === 'display' && <><h3>显示设置</h3><p className="section-description">调整文字的显示方式，让日程更清晰易读。</p><label className="check-row"><input type="checkbox" checked={prefs.boldText ?? false} disabled={busy} aria-describedby="bold-text-hint" onChange={event => {
+        const checked = event.target.checked;
+        const previous = prefs.boldText;
+        set('boldText', checked);
+        void act(async () => {
+          try {
+            const latest = await window.shixu.snapshot();
+            await window.shixu.settings({ ...latest.settings, boldText: checked });
+          } catch (error) {
+            set('boldText', previous);
+            throw error;
+          }
+        }, '显示设置已保存');
+      }}/>启用粗体显示</label><p className="form-hint" id="bold-text-hint">加粗日历、日程和设置中的文字。修改后立即生效，下次启动时保留。</p></>}
       {tab === "updates" && <UpdatesPanel/>}
       {busy && <div className="settings-busy" role="status"><Busy/></div>}
     </div></div>

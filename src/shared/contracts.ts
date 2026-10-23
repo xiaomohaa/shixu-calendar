@@ -17,9 +17,10 @@ export const settingsSchema = z.object({
   autoSync: z.boolean(), interval: z.number().int().min(1).max(1440),
   defaultCalendar: z.string(), timeFormat: z.enum(['24', '12']), dateFormat: z.enum(['numeric', 'chinese']),
   autoUpdateCheck: z.boolean().default(true), closeToTray: z.boolean().default(true),
+  boldText: z.boolean().default(false),
 });
 export type Settings = z.infer<typeof settingsSchema>;
-export const defaultSettings: Settings = { theme: 'system', view: 'dayGridMonth', firstDay: 1, duration: 60, reminder: 15, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, autoSync: true, interval: 10, defaultCalendar: '', timeFormat: '24', dateFormat: 'chinese', autoUpdateCheck: true, closeToTray: true };
+export const defaultSettings: Settings = { theme: 'system', view: 'dayGridMonth', firstDay: 1, duration: 60, reminder: 15, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, autoSync: true, interval: 10, defaultCalendar: '', timeFormat: '24', dateFormat: 'chinese', autoUpdateCheck: true, closeToTray: true, boldText: false };
 export const eventInput = z.object({
   resourceId: z.string().optional(), calendarId: z.string().min(1), uid: z.string().optional(),
   title: z.string().trim().min(1, '请输入日程标题').max(500), start: z.string().min(10), end: z.string().min(10),

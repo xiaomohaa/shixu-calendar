@@ -7,4 +7,5 @@ import './almanac.css';
 import './desktop.css';
 import './native-calendar.css';
 import './month.css';
+import './display.css';
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);

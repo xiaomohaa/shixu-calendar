@@ -62,6 +62,7 @@ export function App() {
   useEffect(() => { const media = matchMedia('(max-width: 900px)'); const apply = () => { if (media.matches) setSidebar(false); }; apply(); media.addEventListener('change', apply); return () => media.removeEventListener('change', apply); }, []);
   useEffect(() => { const media = matchMedia('(prefers-color-scheme: dark)'); const apply = () => { document.documentElement.dataset.theme = snapshot?.settings.theme === 'dark' || (snapshot?.settings.theme === 'system' && media.matches) ? 'dark' : 'light'; }; apply(); media.addEventListener('change', apply); return () => media.removeEventListener('change', apply); }, [snapshot?.settings.theme]);
   useEffect(() => { if (searchOpen) searchRef.current?.focus(); }, [searchOpen]);
+  useEffect(() => { document.documentElement.dataset.boldText = String(snapshot?.settings.boldText ?? false); }, [snapshot?.settings.boldText]);
   useEffect(() => { if (notice) { const t = setTimeout(() => setNotice(''), 5000); return () => clearTimeout(t); } }, [notice]);
   const execute = async (fn: () => Promise<unknown>, done?: string) => { setError(''); try { await fn(); if (done) setNotice(done); await refresh(); } catch (e) { setError((e as Error).message); } };
   const create = (start?: string, end?: string, allDay = false) => {

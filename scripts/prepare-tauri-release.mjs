@@ -28,7 +28,7 @@ const out = resolve('release-tauri');
 await mkdir(out, { recursive: true });
 await copyFile(source, join(out, filename));
 await writeFile(join(out, `${filename}.sig`), `${signature}\n`);
-const notes = `时序日历 ${version}：Tauri 版 Windows 日历，保留 CalDAV 同步、离线日程、提醒与旧版数据迁移。`;
+const notes = (await readFile(`docs/RELEASE_NOTES_${version}.md`, 'utf8')).trim();
 const manifest = {
   version,
   notes,
