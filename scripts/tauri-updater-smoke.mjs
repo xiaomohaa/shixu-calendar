@@ -5,8 +5,8 @@ import { mkdir, readFile, stat } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 
-const installer = resolve('release-tauri/时序日历 2_2.0.0_x64-setup.exe');
 const release = JSON.parse(await readFile('release-tauri/latest.json', 'utf8'));
+const installer = resolve('release-tauri', `Shixu-Setup-${release.version}-x64.exe`);
 const size = (await stat(installer)).size;
 const firstChunk = (await readFile(installer)).subarray(0, 65536);
 let artifactMode = 'slow';
@@ -54,7 +54,7 @@ try {
   }
   await page.evaluate(() => window.shixu.checkForUpdates());
   const available = await page.evaluate(() => window.shixu.updateState());
-  if (available.phase !== 'available' || available.release?.version !== '2.0.0') throw new Error(`Update check failed: ${JSON.stringify(available)}`);
+  if (available.phase !== 'available' || available.release?.version !== release.version) throw new Error(`Update check failed: ${JSON.stringify(available)}`);
   const download = page.evaluate(() => window.shixu.downloadUpdate());
   await page.waitForFunction(async () => (await window.shixu.updateState()).progress?.transferred > 0);
   await page.evaluate(() => window.shixu.cancelUpdateDownload());
@@ -74,7 +74,7 @@ try {
   await page.evaluate(() => window.shixu.checkForUpdates());
   await page.evaluate(() => window.shixu.downloadUpdate());
   const downloaded = await page.evaluate(() => window.shixu.updateState());
-  if (downloaded.phase !== 'downloaded' || downloaded.release?.version !== '2.0.0') throw new Error(`Signed update download failed: ${JSON.stringify(downloaded)}`);
+  if (downloaded.phase !== 'downloaded' || downloaded.release?.version !== release.version) throw new Error(`Signed update download failed: ${JSON.stringify(downloaded)}`);
   console.log('PASS: Tauri updater check, progress, cancel, signature rejection, retry, signed download');
 } finally {
   await browser?.close().catch(() => {});
