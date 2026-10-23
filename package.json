@@ -29,6 +29,7 @@
     "@fullcalendar/luxon3": "6.1.20",
     "@fullcalendar/react": "6.1.20",
     "@fullcalendar/timegrid": "6.1.20",
+    "@tauri-apps/api": "^2.12.4",
     "electron-updater": "6.8.9",
     "fast-xml-parser": "^5.3.0",
     "ical.js": "2.2.1",
