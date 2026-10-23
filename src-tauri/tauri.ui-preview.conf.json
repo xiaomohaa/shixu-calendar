@@ -14,5 +14,10 @@
       "minHeight": 680,
       "resizable": true
     }]
+  },
+  "plugins": {
+    "updater": {
+      "dangerousInsecureTransportProtocol": true
+    }
   }
 }

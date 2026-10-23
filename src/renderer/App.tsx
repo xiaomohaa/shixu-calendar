@@ -113,7 +113,7 @@ export function App() {
   const today = DateTime.now().setZone(prefs?.timezone || 'local').toISODate();
   const selectedEvents = filtered.filter(e => { const s = e.allDay ? e.start : DateTime.fromISO(e.start).setZone(prefs?.timezone || 'local').toISODate()!; const end = e.allDay ? DateTime.fromISO(e.end).minus({ days: 1 }).toISODate()! : DateTime.fromISO(e.end).minus({ milliseconds: 1 }).setZone(prefs?.timezone || 'local').toISODate()!; return s <= selected && end >= selected; });
   return <div className={`app-shell ${sidebar ? '' : 'sidebar-collapsed'}`}>
-    <aside className="sidebar" aria-label="日历侧边栏"><div className="brand"><span className="app-mark"><CalendarDays size={23}/></span><div><strong>时序</strong><span>留给生活的时间</span></div></div>
+    <aside className="sidebar" aria-label="日历侧边栏"><div className="brand"><img className="app-mark" src={new URL('../../build/icon.png', import.meta.url).href} alt="时序日历"/><div><strong>时序</strong><span>留给生活的时间</span></div></div>
       <button className="new-event-button" onClick={() => create()}><Plus size={18}/>新建日程<kbd>N</kbd></button>
       <button className="today-link" onClick={() => go(today!)}><CalendarDays size={17}/><span>今天</span><span className="today-number">{DateTime.now().setZone(prefs?.timezone || 'local').day}</span></button>
       <div className="sidebar-scroll">

@@ -3,6 +3,7 @@ dist/
 dist-main/
 release/
 release-tauri-probe/
+release-tauri/
 src-tauri/target/
 .smoke-data/
 test-results/

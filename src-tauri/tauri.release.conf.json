@@ -1,0 +1,22 @@
+{
+  "productName": "时序日历 2",
+  "version": "2.0.0",
+  "identifier": "cn.shixu.calendar.tauri",
+  "build": {
+    "frontendDist": "../dist",
+    "beforeBuildCommand": "npm run build:renderer"
+  },
+  "app": {
+    "windows": [{
+      "title": "时序日历",
+      "width": 1380,
+      "height": 900,
+      "minWidth": 1000,
+      "minHeight": 680,
+      "resizable": true
+    }]
+  },
+  "bundle": {
+    "createUpdaterArtifacts": true
+  }
+}

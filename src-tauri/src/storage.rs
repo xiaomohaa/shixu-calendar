@@ -221,14 +221,111 @@ impl Store {
         Ok(())
     }
 
+    pub fn close_to_tray(&self) -> bool {
+        let saved: rusqlite::Result<Option<String>> = self
+            .db
+            .query_row(
+                "SELECT value FROM settings WHERE key='preferences'",
+                [],
+                |row| row.get(0),
+            )
+            .optional();
+        saved
+            .ok()
+            .flatten()
+            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+            .and_then(|value| value.get("closeToTray").and_then(Value::as_bool))
+            .unwrap_or(true)
+    }
+
+    pub fn auto_sync_interval(&self) -> Option<u64> {
+        let saved: Option<String> = self
+            .db
+            .query_row(
+                "SELECT value FROM settings WHERE key='preferences'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .ok()
+            .flatten();
+        let settings = saved.and_then(|raw| serde_json::from_str::<Value>(&raw).ok());
+        if settings
+            .as_ref()
+            .and_then(|value| value.get("autoSync").and_then(Value::as_bool))
+            == Some(false)
+        {
+            return None;
+        }
+        Some(
+            settings
+                .as_ref()
+                .and_then(|value| value.get("interval").and_then(Value::as_u64))
+                .filter(|minutes| (1..=1440).contains(minutes))
+                .unwrap_or(10),
+        )
+    }
+
+    pub fn auto_update_check(&self) -> bool {
+        let saved: Option<String> = self
+            .db
+            .query_row(
+                "SELECT value FROM settings WHERE key='preferences'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .ok()
+            .flatten();
+        saved
+            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+            .and_then(|value| value.get("autoUpdateCheck").and_then(Value::as_bool))
+            .unwrap_or(true)
+    }
+
+    pub fn restore_settings(&self, mut raw: Value) -> Result<(), String> {
+        let default = raw
+            .get("defaultCalendar")
+            .and_then(Value::as_str)
+            .ok_or("备份偏好无效")?;
+        if !default.is_empty() {
+            let found: Option<i64> = self
+                .db
+                .query_row("SELECT 1 FROM calendars WHERE id=?", [default], |row| {
+                    row.get(0)
+                })
+                .optional()
+                .map_err(|_| "读取默认日历失败")?;
+            if found.is_none() {
+                raw["defaultCalendar"] = json!("");
+            }
+        }
+        self.set_settings(raw)
+    }
+
     pub fn event_resources(&self, defaults: Value) -> rusqlite::Result<Value> {
+        self.resources_for_worker(defaults, false)
+    }
+
+    pub fn reminder_resources(&self, defaults: Value) -> rusqlite::Result<Value> {
+        self.resources_for_worker(defaults, true)
+    }
+
+    fn resources_for_worker(
+        &self,
+        defaults: Value,
+        include_hidden: bool,
+    ) -> rusqlite::Result<Value> {
         let snapshot = self.snapshot(defaults)?;
+        let sql = if include_hidden {
+            "SELECT id,calendarId,url,etag,ics,dirty,deleted FROM event_resources"
+        } else {
+            "SELECT r.id,r.calendarId,r.url,r.etag,r.ics,r.dirty,r.deleted
+             FROM event_resources r JOIN calendars c ON c.id=r.calendarId WHERE c.visible=1"
+        };
         let resources = self
             .db
-            .prepare(
-                "SELECT r.id,r.calendarId,r.url,r.etag,r.ics,r.dirty,r.deleted
-             FROM event_resources r JOIN calendars c ON c.id=r.calendarId WHERE c.visible=1",
-            )?
+            .prepare(sql)?
             .query_map([], |row| {
                 Ok(json!({
                     "id": row.get::<_, String>(0)?, "calendarId": row.get::<_, String>(1)?,
@@ -242,7 +339,7 @@ impl Store {
             .as_array()
             .unwrap()
             .iter()
-            .filter(|c| c["visible"] == true)
+            .filter(|c| include_hidden || c["visible"] == true)
             .map(|c| c["id"].clone())
             .collect();
         let conflicts: Vec<Value> = snapshot["conflicts"]
@@ -255,6 +352,30 @@ impl Store {
             "resources": resources, "visibleCalendars": visible,
             "conflictResources": conflicts, "timezone": snapshot["settings"]["timezone"]
         }))
+    }
+
+    pub fn claim_reminder(&self, key: &str) -> Result<bool, String> {
+        if key.is_empty() || key.len() > 2000 {
+            return Err("提醒标识无效".into());
+        }
+        self.db
+            .execute(
+                "DELETE FROM reminders WHERE datetime(shownAt) < datetime('now','-30 days')",
+                [],
+            )
+            .map_err(|_| "清理提醒记录失败")?;
+        let changed = self
+            .db
+            .execute(
+                "INSERT OR IGNORE INTO reminders(key,shownAt) VALUES(?,?)",
+                rusqlite::params![key, chrono::Utc::now().to_rfc3339()],
+            )
+            .map_err(|_| "保存提醒记录失败")?;
+        Ok(changed == 1)
+    }
+
+    pub fn release_reminder(&self, key: &str) {
+        let _ = self.db.execute("DELETE FROM reminders WHERE key=?", [key]);
     }
 
     pub fn event_resource(&self, id: &str) -> Result<Value, String> {
@@ -845,11 +966,83 @@ impl Store {
         drop(destination_db);
         Self::open(destination)?.inventory()
     }
+
+    #[cfg(windows)]
+    pub fn rewrap_legacy_credentials(&mut self, local_state: &Path) -> Result<(), String> {
+        let accounts: Vec<(String, String)> = self
+            .db
+            .prepare("SELECT id,password FROM accounts")
+            .and_then(|mut statement| {
+                statement
+                    .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+                    .collect()
+            })
+            .map_err(|_| "读取旧版凭据失败")?;
+        let tx = self.db.transaction().map_err(|_| "无法开始凭据转换事务")?;
+        for (id, ciphertext) in accounts {
+            if ciphertext.starts_with("dpapi:v1:") {
+                continue;
+            }
+            match crate::vault::open_electron(local_state, &ciphertext)
+                .and_then(|plaintext| crate::vault::seal(&plaintext))
+            {
+                Ok(rewrapped) => {
+                    tx.execute(
+                        "UPDATE accounts SET password=?,error=NULL WHERE id=?",
+                        rusqlite::params![rewrapped, id],
+                    )
+                    .map_err(|_| "保存转换后的凭据失败")?;
+                }
+                Err(_) => {
+                    tx.execute("UPDATE accounts SET error=? WHERE id=?", rusqlite::params![
+                        "旧版密码无法在当前 Windows 用户下解密。请编辑账户，重新输入密码或应用专用密码后再同步。",id])
+                        .map_err(|_| "记录重新授权状态失败")?;
+                }
+            }
+        }
+        tx.commit().map_err(|_| "提交凭据转换事务失败".into())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clearing_cache_keeps_offline_edits_and_conflicts() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut store = Store::open(&dir.path().join("calendar.db")).unwrap();
+        store.db.execute_batch(
+            "INSERT INTO accounts(id,name,url,username,password) VALUES('a','A','https://example.test','u','cipher');
+             INSERT INTO calendars(id,accountId,url,name,color) VALUES('c','a','https://example.test/cal/','C','#123456');
+             INSERT INTO event_resources(id,calendarId,url,ics) VALUES('clean','c','https://example.test/cal/clean.ics','clean');
+             INSERT INTO event_resources(id,calendarId,url,ics,dirty) VALUES('dirty','c','https://example.test/cal/dirty.ics','offline',1);
+             INSERT INTO event_resources(id,calendarId,url,ics) VALUES('conflict','c','https://example.test/cal/conflict.ics','both');
+             INSERT INTO pending_operations(id,resourceId,kind) VALUES('p','dirty','put');
+             INSERT INTO conflicts(id,resourceId,localIcs,createdAt) VALUES('f','conflict','both','2026-10-23');
+             INSERT INTO sync_state(calendarId,token) VALUES('c','token-1');"
+        ).unwrap();
+        store.clear_cache().unwrap();
+        let ids: Vec<String> = store
+            .db
+            .prepare("SELECT id FROM event_resources ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap();
+        assert_eq!(ids, ["conflict", "dirty"]);
+        assert_eq!(store.inventory().unwrap().pending, 1);
+        assert_eq!(store.inventory().unwrap().conflicts, 1);
+        assert_eq!(
+            store
+                .db
+                .query_row("SELECT COUNT(*) FROM sync_state", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
 
     #[test]
     fn copy_preserves_pending_conflicts_and_raw_ics() {

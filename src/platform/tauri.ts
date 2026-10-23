@@ -1,11 +1,12 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { Api, EventInput, Result, Snapshot } from '../shared/contracts';
+import type { Api, CalendarEvent, EventInput, Result, Snapshot } from '../shared/contracts';
 import { defaultSettings, eventInput } from '../shared/contracts';
 import type { DesktopState, UpdateState } from '../shared/updates';
 import { expandInWorker } from './icsWorker';
 import { editInWorker } from './editWorker';
 import type { Resource } from '../database/store';
+import { DateTime } from 'luxon';
 
 declare global { interface Window { __TAURI_INTERNALS__?: unknown } }
 
@@ -76,10 +77,34 @@ if (window.__TAURI_INTERNALS__) {
       await call('resolveConflict', id, choice, copy);
     },
     clearCache: () => call('clearCache'),
-    backup: () => call('backup'),
+    backup: () => call('backup', defaultSettings),
     restore: () => call('restore'),
     onChange: callback => subscribe('shixu:changed', callback),
     onOpenSettings: callback => subscribe('shixu:open-settings', callback),
   };
   window.shixu = Object.freeze(api);
+  let checkingReminders = false;
+  void listen('shixu:reminder-tick', async () => {
+    if (checkingReminders) return;
+    checkingReminders = true;
+    try {
+      const input = await call<{ resources: Resource[]; visibleCalendars: string[]; conflictResources: string[]; timezone: string }>('reminderResources', defaultSettings);
+      const now = Date.now();
+      const expanded = await expandInWorker({ ...input, start: new Date(now - 86400000).toISOString(), end: new Date(now + 8 * 86400000).toISOString() });
+      for (const event of expanded.events as CalendarEvent[]) {
+        if (event.reminder < 0) continue;
+        const start = event.allDay ? DateTime.fromISO(event.start, { zone: input.timezone }).toMillis() : Date.parse(event.start);
+        if (!Number.isFinite(start)) continue;
+        const due = start - event.reminder * 60000;
+        if (due > now || due < now - 60000) continue;
+        const key = `${event.id}:${event.start}:${event.reminder}`;
+        if (key.length > 2000) continue;
+        const time = event.allDay ? '全天' : DateTime.fromMillis(start).setZone(input.timezone).toFormat('HH:mm');
+        const body = `${time} ${event.location}`.trim().slice(0, 2000);
+        try { await call('notifyReminder', key, event.title.slice(0, 500), body); }
+        catch { /* A failed notification should not suppress other due events. */ }
+      }
+    } catch { /* Reminder processing retries on the next native tick. */ }
+    finally { checkingReminders = false; }
+  });
 }

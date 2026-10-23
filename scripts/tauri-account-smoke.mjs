@@ -17,7 +17,7 @@ const fixture = await davServer();
 const resourcePath = '/home/personal/first.ics';
 fixture.put(resourcePath, fixtureIcs('首次同步'));
 const port = 9224;
-const app = spawn(resolve('src-tauri/target/release/shixu_tauri_probe.exe'), [], {
+const app = spawn(resolve('src-tauri/target/release/shixu-calendar.exe'), [], {
   env: { ...process.env, SHIXU_TAURI_TEST_DATA_DIR: data, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}` },
   stdio: 'ignore',
 });
@@ -31,6 +31,16 @@ try {
   const page = browser.contexts().flatMap(context => context.pages()).find(page => page.url().startsWith('http://tauri.localhost/'));
   if (!page) throw new Error('Tauri page not found');
   await page.locator('.month-grid').waitFor({ timeout: 20000 });
+  const desktop = await page.evaluate(() => window.shixu.desktopState());
+  if (desktop.mode !== 'development' || desktop.canAutoStart || desktop.openAtLogin) throw new Error(`Tauri desktop state regression: ${JSON.stringify(desktop)}`);
+  const updater = await page.evaluate(async () => {
+    const before = await window.shixu.updateState();
+    await window.shixu.checkForUpdates();
+    return { before, after: await window.shixu.updateState() };
+  });
+  if (updater.before.mode !== 'development' || updater.before.currentVersion !== '2.0.0-alpha.1' || updater.after.phase !== 'idle') {
+    throw new Error(`Tauri updater development mode regression: ${JSON.stringify(updater)}`);
+  }
   const report = await page.evaluate(async account => {
     const calendars = await window.shixu.testAccount(account);
     const id = await window.shixu.saveAccount(account);
@@ -115,14 +125,27 @@ try {
   await page.evaluate(id => window.shixu.deleteEvent(id, 'series'), localEvent.resourceId);
   await page.evaluate(id => window.shixu.sync(id), report.id);
   if (fixture.resources.has(new URL(editedUrl.url).pathname)) throw new Error('Tauri editor delete failed');
-  await page.evaluate(() => window.shixu.clearCache());
-  const cacheDb = new DatabaseSync(join(data, 'calendar.db'));
-  const cacheState = cacheDb.prepare('SELECT (SELECT COUNT(*) FROM event_resources) resources,(SELECT COUNT(*) FROM sync_state) tokens').get();
-  cacheDb.close();
-  if (cacheState.resources || cacheState.tokens) throw new Error('Tauri cache cleanup failed');
+  await page.locator('.month-cell[data-date="2026-10-23"] .solar-date').click();
+  await page.getByRole('button', { name: '新建日程', exact: true }).first().click();
+  await page.getByRole('textbox', { name: '日程标题' }).fill('Tauri 界面新建');
+  await page.getByLabel('开始时间').fill('2026-10-23T12:00');
+  await page.getByLabel('结束时间', { exact: true }).fill('2026-10-23T13:00');
+  await page.getByRole('button', { name: '保存日程', exact: true }).click();
+  await page.waitForFunction(async () => (await window.shixu.events('2026-10-22T00:00:00Z', '2026-10-25T00:00:00Z')).some(event => event.title === 'Tauri 界面新建'));
+  const createdButton = page.getByRole('button', { name: /Tauri 界面新建/ }).and(page.locator('.month-event:visible')).first();
+  if (await createdButton.count()) await createdButton.click();
+  else {
+    await page.locator('.month-cell[data-date="2026-10-23"] .month-more').click();
+    await page.locator('.day-agenda .agenda-event').filter({ hasText: 'Tauri 界面新建' }).click();
+  }
+  await page.getByRole('textbox', { name: '日程标题' }).fill('Tauri 界面修改');
+  await page.getByRole('button', { name: '保存日程', exact: true }).click();
+  await page.waitForFunction(async () => (await window.shixu.events('2026-10-22T00:00:00Z', '2026-10-25T00:00:00Z')).some(event => event.title === 'Tauri 界面修改'));
+  const uiEvent = (await page.evaluate(() => window.shixu.events('2026-10-22T00:00:00Z', '2026-10-25T00:00:00Z'))).find(event => event.title === 'Tauri 界面修改');
+  if (!uiEvent) throw new Error('Tauri UI did not persist the edited event');
   await page.evaluate(id => window.shixu.deleteAccount(id), report.id);
   if ((await page.evaluate(() => window.shixu.snapshot())).accounts.length) throw new Error('Tauri account deletion failed');
-  console.log('PASS: Tauri DAV, DPAPI, pull, conditional writes, conflict resolution, event CRUD, cache and account cleanup');
+  console.log('PASS: Tauri DAV, DPAPI, pull, conditional writes, conflicts, API and UI event CRUD, account cleanup');
 } finally {
   await browser?.close();
   app.kill();

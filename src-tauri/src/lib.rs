@@ -1,5 +1,6 @@
 mod dav;
 mod storage;
+mod updates;
 #[cfg(windows)]
 mod vault;
 use serde_json::{Value, json};
@@ -11,10 +12,59 @@ use std::{
     },
 };
 use tauri::{Emitter, Manager};
+use tauri_plugin_autostart::ManagerExt;
+use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_notification::NotificationExt;
+
+fn desktop_state(app: &tauri::AppHandle) -> Result<Value, String> {
+    let installed = !app.config().identifier.ends_with(".dev");
+    let enabled = if installed {
+        app.autolaunch()
+            .is_enabled()
+            .map_err(|_| "读取开机自启状态失败")?
+    } else {
+        false
+    };
+    Ok(
+        json!({"mode": if installed { "installer" } else { "development" },
+        "openAtLogin": enabled, "startupEnabled": enabled, "canAutoStart": installed}),
+    )
+}
+
+fn show_main(app: &tauri::AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
 
 #[derive(Default)]
 struct SyncTracker {
     active: Mutex<HashMap<String, Arc<AtomicBool>>>,
+}
+
+impl SyncTracker {
+    async fn stop_for_update(&self) -> Result<(), String> {
+        {
+            let active = self.active.lock().map_err(|_| "同步状态暂时不可用")?;
+            for cancel in active.values() {
+                cancel.store(true, Ordering::SeqCst);
+            }
+        }
+        for _ in 0..100 {
+            if self
+                .active
+                .lock()
+                .map_err(|_| "同步状态暂时不可用")?
+                .is_empty()
+            {
+                return Ok(());
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        }
+        Err("同步尚未停止，请稍后重试安装".into())
+    }
 }
 
 struct SyncLease<'a> {
@@ -53,6 +103,9 @@ async fn sync_account(
         .ok_or("账户不存在")?;
     if account.paused {
         return Ok(());
+    }
+    if !account.password.starts_with("dpapi:v1:") {
+        return Err("旧版密码无法在当前 Windows 用户下解密。请编辑账户，重新输入密码或应用专用密码后再同步。".into());
     }
     let password = vault::open(&account.password)?;
     let input = dav::AccountInput {
@@ -166,6 +219,40 @@ async fn sync_account(
     Ok(())
 }
 
+async fn sync_one(id: &str, app: &tauri::AppHandle) -> Result<(), String> {
+    let store = app.state::<Mutex<storage::Store>>();
+    let tracker = app.state::<SyncTracker>();
+    let cancel = Arc::new(AtomicBool::new(false));
+    {
+        let mut active = tracker.active.lock().map_err(|_| "同步状态暂时不可用")?;
+        if app.state::<updates::Updates>().is_installing() {
+            return Err("更新正在安装，暂时无法开始同步".into());
+        }
+        if active.contains_key(id) {
+            return Err("账户正在同步".into());
+        }
+        active.insert(id.to_owned(), cancel.clone());
+    }
+    let lease = SyncLease {
+        id: id.to_owned(),
+        tracker: &tracker,
+        app,
+    };
+    let _ = app.emit("shixu:changed", ());
+    let result = sync_account(id, &store, app, &cancel).await;
+    drop(lease);
+    if let Err(error) = &result {
+        if error != "同步已取消" {
+            let _ = store
+                .lock()
+                .map_err(|_| "本地数据库暂时不可用")?
+                .set_account_error(id, Some(error));
+            let _ = app.emit("shixu:changed", ());
+        }
+    }
+    result
+}
+
 #[tauri::command]
 async fn shixu_call(
     method: String,
@@ -174,6 +261,68 @@ async fn shixu_call(
     syncing: tauri::State<'_, SyncTracker>,
     app: tauri::AppHandle,
 ) -> Result<Value, String> {
+    if method == "updateState" {
+        if !args.is_empty() {
+            return Ok(json!({"ok":false,"error":"更新参数无效"}));
+        }
+        return Ok(match app.state::<updates::Updates>().state() {
+            Ok(value) => json!({"ok":true,"value":value}),
+            Err(error) => json!({"ok":false,"error":error}),
+        });
+    }
+    if method == "checkForUpdates" || method == "downloadUpdate" || method == "installUpdate" {
+        if !args.is_empty() {
+            return Ok(json!({"ok":false,"error":"更新参数无效"}));
+        }
+        let result = match method.as_str() {
+            "checkForUpdates" => updates::check(&app).await,
+            "downloadUpdate" => updates::download(&app).await,
+            _ => updates::install(&app, &syncing).await,
+        };
+        return Ok(match result {
+            Ok(()) => json!({"ok":true,"value":null}),
+            Err(error) => json!({"ok":false,"error":error}),
+        });
+    }
+    if method == "cancelUpdateDownload" {
+        if !args.is_empty() {
+            return Ok(json!({"ok":false,"error":"更新参数无效"}));
+        }
+        return Ok(match updates::cancel(&app) {
+            Ok(()) => json!({"ok":true,"value":null}),
+            Err(error) => json!({"ok":false,"error":error}),
+        });
+    }
+    if method == "openReleasePage" {
+        if !args.is_empty() {
+            return Ok(json!({"ok":false,"error":"更新参数无效"}));
+        }
+        return Ok(
+            match tauri_plugin_opener::open_url(
+                "https://github.com/xiaomohaa/shixu-calendar/releases/latest",
+                None::<&str>,
+            ) {
+                Ok(()) => json!({"ok":true,"value":null}),
+                Err(_) => json!({"ok":false,"error":"无法打开发布页面"}),
+            },
+        );
+    }
+    if app.state::<updates::Updates>().is_installing()
+        && matches!(
+            method.as_str(),
+            "saveAccount"
+                | "deleteAccount"
+                | "queueEvent"
+                | "resolveConflict"
+                | "settings"
+                | "setCalendar"
+                | "clearCache"
+                | "restore"
+                | "notifyReminder"
+        )
+    {
+        return Ok(json!({"ok":false,"error":"更新正在安装，请稍后再修改数据"}));
+    }
     if method == "testAccount" {
         let result: Result<Value, String> = async {
             if args.len() != 1 {
@@ -282,31 +431,10 @@ async fn shixu_call(
             return Ok(json!({"ok": false, "error": "同步参数无效"}));
         };
         for id in ids {
-            let cancel = Arc::new(AtomicBool::new(false));
-            {
-                let mut active = syncing.active.lock().map_err(|_| "同步状态暂时不可用")?;
-                if active.contains_key(&id) {
-                    return Ok(json!({"ok": false, "error": "账户正在同步"}));
-                }
-                active.insert(id.clone(), cancel.clone());
-            }
-            let lease = SyncLease {
-                id: id.clone(),
-                tracker: &syncing,
-                app: &app,
-            };
-            let _ = app.emit("shixu:changed", ());
-            let result = sync_account(&id, &store, &app, &cancel).await;
-            drop(lease);
-            if let Err(error) = result {
+            if let Err(error) = sync_one(&id, &app).await {
                 if error == "同步已取消" {
                     return Ok(json!({"ok": true, "value": null}));
                 }
-                let _ = store
-                    .lock()
-                    .map_err(|_| "本地数据库暂时不可用")?
-                    .set_account_error(&id, Some(&error));
-                let _ = app.emit("shixu:changed", ());
                 return Ok(json!({"ok": false, "error": error}));
             }
         }
@@ -325,6 +453,200 @@ async fn shixu_call(
             cancel.store(true, Ordering::SeqCst);
         }
         return Ok(json!({"ok": true, "value": null}));
+    }
+    if method == "desktopState" {
+        return Ok(match desktop_state(&app) {
+            Ok(value) => json!({"ok": true, "value": value}),
+            Err(error) => json!({"ok": false, "error": error}),
+        });
+    }
+    if method == "setAutoStart" {
+        let result: Result<Value, String> = (|| {
+            if args.len() != 1 {
+                return Err("开机自启参数无效".into());
+            }
+            let enabled = args[0].as_bool().ok_or("开机自启参数无效")?;
+            if app.config().identifier.ends_with(".dev") {
+                return Err("请安装正式安装版后设置开机自启".into());
+            }
+            if enabled {
+                app.autolaunch().enable().map_err(|_| "开启开机自启失败")?;
+            } else {
+                app.autolaunch().disable().map_err(|_| "关闭开机自启失败")?;
+            }
+            desktop_state(&app)
+        })();
+        return Ok(match result {
+            Ok(value) => json!({"ok": true, "value": value}),
+            Err(error) => json!({"ok": false, "error": error}),
+        });
+    }
+    if method == "quitApp" {
+        if !args.is_empty() {
+            return Ok(json!({"ok": false, "error": "退出参数无效"}));
+        }
+        app.exit(0);
+        return Ok(json!({"ok": true, "value": null}));
+    }
+    if method == "backup" {
+        let result: Result<Value, String> = (|| {
+            if args.len() != 1 || !args[0].is_object() {
+                return Err("备份参数无效".into());
+            }
+            let settings = store
+                .lock()
+                .map_err(|_| "本地数据库暂时不可用")?
+                .snapshot(args[0].clone())
+                .map_err(|_| "读取偏好失败")?["settings"]
+                .clone();
+            let path = app
+                .dialog()
+                .file()
+                .set_title("备份日历偏好")
+                .set_file_name("时序设置.json")
+                .add_filter("JSON 设置", &["json"])
+                .blocking_save_file();
+            let Some(path) = path else {
+                return Ok(json!(false));
+            };
+            let path = path.into_path().map_err(|_| "备份路径无效")?;
+            let content = serde_json::to_vec_pretty(
+                &json!({"format":"shixu-settings-v1","settings":settings}),
+            )
+            .map_err(|_| "无法生成偏好备份")?;
+            std::fs::write(path, content).map_err(|_| "写入偏好备份失败")?;
+            Ok(json!(true))
+        })();
+        return Ok(match result {
+            Ok(value) => json!({"ok":true,"value":value}),
+            Err(error) => json!({"ok":false,"error":error}),
+        });
+    }
+    if method == "restore" {
+        let result: Result<Value, String> = (|| {
+            if !args.is_empty() {
+                return Err("恢复参数无效".into());
+            }
+            let path = app
+                .dialog()
+                .file()
+                .set_title("恢复日历偏好")
+                .add_filter("JSON 设置", &["json"])
+                .blocking_pick_file();
+            let Some(path) = path else {
+                return Ok(json!(false));
+            };
+            let path = path.into_path().map_err(|_| "备份路径无效")?;
+            if std::fs::metadata(&path).map_err(|_| "读取备份失败")?.len() > 128 * 1024 {
+                return Err("偏好备份过大".into());
+            }
+            let content = std::fs::read(&path).map_err(|_| "读取备份失败")?;
+            let backup: Value =
+                serde_json::from_slice(&content).map_err(|_| "偏好备份不是有效 JSON")?;
+            if backup.get("format").and_then(Value::as_str) != Some("shixu-settings-v1") {
+                return Err("偏好备份格式不受支持".into());
+            }
+            let settings = backup.get("settings").cloned().ok_or("偏好备份缺少设置")?;
+            store
+                .lock()
+                .map_err(|_| "本地数据库暂时不可用")?
+                .restore_settings(settings)?;
+            let _ = app.emit("shixu:changed", ());
+            Ok(json!(true))
+        })();
+        return Ok(match result {
+            Ok(value) => json!({"ok":true,"value":value}),
+            Err(error) => json!({"ok":false,"error":error}),
+        });
+    }
+    if method == "clearCache" {
+        if !args.is_empty() {
+            return Ok(json!({"ok":false,"error":"缓存参数无效"}));
+        }
+        if !syncing
+            .active
+            .lock()
+            .map_err(|_| "同步状态暂时不可用")?
+            .is_empty()
+        {
+            return Ok(json!({"ok":false,"error":"请等待同步完成后清除缓存"}));
+        }
+        let confirmed = app
+            .dialog()
+            .message("清除已同步的本地缓存？未同步修改和冲突会保留，下次同步会重新下载日程。")
+            .title("时序日历")
+            .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancel)
+            .blocking_show();
+        if !confirmed {
+            return Ok(json!({"ok":true,"value":null}));
+        }
+        let result = store
+            .lock()
+            .map_err(|_| "本地数据库暂时不可用")?
+            .clear_cache();
+        return Ok(match result {
+            Ok(()) => {
+                let _ = app.emit("shixu:changed", ());
+                json!({"ok":true,"value":null})
+            }
+            Err(error) => json!({"ok":false,"error":error}),
+        });
+    }
+    if method == "reminderResources" {
+        let result = if args.len() == 1 && args[0].is_object() {
+            store
+                .lock()
+                .map_err(|_| "本地数据库暂时不可用")?
+                .reminder_resources(args[0].clone())
+                .map_err(|_| "读取提醒日程失败".to_owned())
+        } else {
+            Err("提醒参数无效".into())
+        };
+        return Ok(match result {
+            Ok(value) => json!({"ok":true,"value":value}),
+            Err(error) => json!({"ok":false,"error":error}),
+        });
+    }
+    if method == "notifyReminder" {
+        let result: Result<Value, String> = (|| {
+            if args.len() != 3 {
+                return Err("提醒参数无效".into());
+            }
+            let (Some(key), Some(title), Some(body)) =
+                (args[0].as_str(), args[1].as_str(), args[2].as_str())
+            else {
+                return Err("提醒参数无效".into());
+            };
+            if title.is_empty() || title.len() > 500 || body.len() > 2000 {
+                return Err("提醒内容无效".into());
+            }
+            let claimed = store
+                .lock()
+                .map_err(|_| "本地数据库暂时不可用")?
+                .claim_reminder(key)?;
+            if !claimed {
+                return Ok(json!(false));
+            }
+            if app
+                .notification()
+                .builder()
+                .title(title)
+                .body(body)
+                .show()
+                .is_err()
+            {
+                store
+                    .lock()
+                    .map_err(|_| "本地数据库暂时不可用")?
+                    .release_reminder(key);
+                return Err("系统通知暂时不可用".into());
+            }
+            Ok(json!(true))
+        })();
+        return Ok(match result {
+            Ok(value) => json!({"ok":true,"value":value}),
+            Err(error) => json!({"ok":false,"error":error}),
+        });
     }
     let mut store = store
         .lock()
@@ -381,19 +703,6 @@ async fn shixu_call(
                 store.delete_account(id).map(|_| Value::Null)
             }
         }
-        "clearCache" if args.is_empty() => {
-            changed = true;
-            if !syncing
-                .active
-                .lock()
-                .map_err(|_| "同步状态暂时不可用")?
-                .is_empty()
-            {
-                Err("请等待同步完成后清除缓存".into())
-            } else {
-                store.clear_cache().map(|_| Value::Null)
-            }
-        }
         "resolveConflict" if args.len() == 3 => {
             changed = true;
             if !syncing
@@ -441,6 +750,9 @@ async fn shixu_call(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
+            show_main(app);
+        }))
         .setup(|app| {
             let data_dir = if app.config().identifier.ends_with(".dev") {
                 std::env::var_os("SHIXU_TAURI_TEST_DATA_DIR")
@@ -450,9 +762,148 @@ pub fn run() {
                 app.path().app_data_dir()?
             };
             std::fs::create_dir_all(&data_dir)?;
-            let store = storage::Store::open(&data_dir.join("calendar.db"))?;
+            let database_path = data_dir.join("calendar.db");
+            let legacy_dir = if app.config().identifier.ends_with(".dev") {
+                std::env::var_os("SHIXU_TAURI_TEST_LEGACY_DIR").map(std::path::PathBuf::from)
+            } else {
+                std::env::var_os("APPDATA")
+                    .map(|path| std::path::PathBuf::from(path).join("时序日历"))
+            };
+            let imported = if let Some(legacy_dir) = &legacy_dir {
+                let source = legacy_dir.join("calendar.db");
+                if !database_path.exists() && source.is_file() && legacy_dir != &data_dir {
+                    let staging = data_dir.join("calendar.importing.db");
+                    if staging.exists() {
+                        std::fs::remove_file(&staging)?;
+                    }
+                    if let Err(error) = storage::Store::copy_legacy(&source, &staging) {
+                        let _ = std::fs::remove_file(&staging);
+                        return Err(std::io::Error::other(format!(
+                            "旧版日历数据无法安全复制：{error}"
+                        ))
+                        .into());
+                    }
+                    std::fs::rename(&staging, &database_path)?;
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+            let mut store = storage::Store::open(&database_path)?;
+            if imported {
+                if let Some(legacy_dir) = &legacy_dir {
+                    store
+                        .rewrap_legacy_credentials(&legacy_dir.join("Local State"))
+                        .map_err(std::io::Error::other)?;
+                }
+            }
             app.manage(Mutex::new(store));
             app.manage(SyncTracker::default());
+            app.manage(updates::Updates::new(
+                app.package_info().version.to_string(),
+                app.config().identifier.ends_with(".dev"),
+            ));
+            let background_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut last_auto: Option<std::time::Instant> = None;
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                    if background_app.state::<updates::Updates>().is_installing() {
+                        continue;
+                    }
+                    let _ = background_app.emit("shixu:reminder-tick", ());
+                    let (minutes, ids) =
+                        match background_app.state::<Mutex<storage::Store>>().lock() {
+                            Ok(store) => match store.auto_sync_interval() {
+                                Some(minutes) => (minutes, store.account_ids().unwrap_or_default()),
+                                None => continue,
+                            },
+                            Err(_) => continue,
+                        };
+                    let now = std::time::Instant::now();
+                    if last_auto.is_some_and(|last| {
+                        now.duration_since(last) < std::time::Duration::from_secs(minutes * 60)
+                    }) {
+                        continue;
+                    }
+                    last_auto = Some(now);
+                    for id in ids {
+                        let _ = sync_one(&id, &background_app).await;
+                    }
+                }
+            });
+            let update_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(std::time::Duration::from_secs(12)).await;
+                loop {
+                    let enabled = update_app
+                        .state::<Mutex<storage::Store>>()
+                        .lock()
+                        .is_ok_and(|store| store.auto_update_check());
+                    if enabled {
+                        let _ = updates::check(&update_app).await;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(6 * 60 * 60)).await;
+                }
+            });
+            app.handle().plugin(tauri_plugin_autostart::init(
+                tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                Some(vec!["--hidden"]),
+            ))?;
+            app.handle().plugin(tauri_plugin_dialog::init())?;
+            app.handle().plugin(tauri_plugin_notification::init())?;
+            let notification_app = app.handle().clone();
+            app.notification().on_action(move |action| {
+                if action.action_id() == "tap" {
+                    show_main(&notification_app);
+                }
+            })?;
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
+            app.handle().plugin(tauri_plugin_opener::init())?;
+            let open =
+                tauri::menu::MenuItem::with_id(app, "open", "打开时序日历", true, None::<&str>)?;
+            let updates =
+                tauri::menu::MenuItem::with_id(app, "updates", "检查更新", true, None::<&str>)?;
+            let quit =
+                tauri::menu::MenuItem::with_id(app, "quit", "退出时序日历", true, None::<&str>)?;
+            let menu = tauri::menu::Menu::with_items(app, &[&open, &updates, &quit])?;
+            tauri::tray::TrayIconBuilder::new()
+                .icon(app.default_window_icon().ok_or("找不到应用图标")?.clone())
+                .tooltip("时序日历")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "open" => show_main(app),
+                    "updates" => {
+                        show_main(app);
+                        let _ = app.emit("shixu:open-settings", "updates");
+                        let handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let _ = updates::check(&handle).await;
+                        });
+                    }
+                    "quit" => app.exit(0),
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let tauri::tray::TrayIconEvent::Click {
+                        button: tauri::tray::MouseButton::Left,
+                        button_state: tauri::tray::MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        show_main(tray.app_handle());
+                    }
+                })
+                .build(app)?;
+            if std::env::args_os().any(|arg| arg == "--hidden") {
+                if let Some(window) = app.get_webview_window("main") {
+                    window.hide()?;
+                }
+            }
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
@@ -461,6 +912,22 @@ pub fn run() {
                 )?;
             }
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let close_to_tray = window
+                    .app_handle()
+                    .state::<Mutex<storage::Store>>()
+                    .lock()
+                    .map(|store| store.close_to_tray())
+                    .unwrap_or(true);
+                api.prevent_close();
+                if close_to_tray {
+                    let _ = window.hide();
+                } else {
+                    window.app_handle().exit(0);
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![shixu_call])
         .run(tauri::generate_context!())

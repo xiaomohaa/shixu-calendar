@@ -22,8 +22,14 @@
     "test:resize": "node scripts/resize-smoke.mjs",
     "test:ics-worker": "node scripts/ics-worker-smoke.mjs",
     "test:tauri-account": "node scripts/tauri-account-smoke.mjs",
+    "test:tauri-desktop": "node scripts/tauri-desktop-smoke.mjs",
+    "test:tauri-migration": "node scripts/tauri-migration-smoke.mjs",
+    "test:tauri-background": "node scripts/tauri-background-smoke.mjs",
+    "test:tauri-updater": "node scripts/tauri-updater-smoke.mjs",
     "tauri:probe": "tauri build",
-    "tauri:ui-preview": "tauri build --config src-tauri/tauri.ui-preview.conf.json"
+    "tauri:ui-preview": "tauri build --config src-tauri/tauri.ui-preview.conf.json",
+    "tauri:release": "tauri build --config src-tauri/tauri.release.conf.json",
+    "tauri:prepare-release": "node scripts/prepare-tauri-release.mjs"
   },
   "dependencies": {
     "@fullcalendar/core": "6.1.20",

@@ -1,7 +1,7 @@
 [package]
-name = "shixu_tauri_probe"
+name = "shixu-calendar"
 version = "2.0.0-alpha.1"
-description = "时序日历 Tauri Windows 可行性测试"
+description = "时序日历 Tauri 桌面版"
 authors = ["Shixu Calendar"]
 license = "MIT"
 repository = "https://github.com/xiaomohaa/shixu-calendar"
@@ -11,7 +11,7 @@ rust-version = "1.90"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [lib]
-name = "shixu_tauri_probe_lib"
+name = "shixu_calendar_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
@@ -21,8 +21,14 @@ tauri-build = { version = "2.7.4", features = [] }
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.12.5", features = [] }
+tauri = { version = "2.12.5", features = ["tray-icon"] }
 tauri-plugin-log = "2"
+tauri-plugin-autostart = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-single-instance = "2"
 rusqlite = { version = "=0.40.2", features = ["bundled", "backup"] }
 chrono-tz = "=0.10.4"
 aes-gcm = "=0.10.3"
@@ -33,6 +39,8 @@ reqwest = "=0.12.24"
 roxmltree = "=0.21.1"
 uuid = { version = "=1.29.0", features = ["v4"] }
 chrono = { version = "=0.4.45", features = ["clock"] }
+tokio = { version = "1.54", features = ["time", "sync", "macros"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
+minisign-verify = "0.3"

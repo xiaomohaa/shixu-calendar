@@ -17,7 +17,15 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": {
+        "default-src": "'self'",
+        "connect-src": "ipc: http://ipc.localhost",
+        "script-src": "'self'",
+        "worker-src": "'self'",
+        "style-src": "'self' 'unsafe-inline'",
+        "img-src": "'self' data: asset: http://asset.localhost",
+        "font-src": "'self' data:"
+      }
     }
   },
   "bundle": {
@@ -28,10 +36,22 @@
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
-      "icons/icon.ico"
+      "../build/icon.ico"
     ],
+    "windows": {
+      "nsis": {
+        "installerIcon": "../build/icon.ico"
+      }
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IENFMjRBOUIzOTZFQkVERTEKUldUaDdldVdzNmtrenVQc29CZ0M3SytZbXZNSm5xYVdvV0psVjBMb3dZTGNCaFYzSGZ4RFMrbmkK",
+      "endpoints": ["https://github.com/xiaomohaa/shixu-calendar/releases/latest/download/latest.json"],
+      "requireSignedVersion": true
     }
   }
 }
