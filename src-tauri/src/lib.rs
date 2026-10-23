@@ -1,4 +1,5 @@
 mod dav;
+mod feeds;
 mod storage;
 mod updates;
 #[cfg(windows)]
@@ -102,6 +103,20 @@ async fn sync_account(
         .account(id)?
         .ok_or("账户不存在")?;
     if account.paused {
+        return Ok(());
+    }
+    let subscription = store
+        .lock()
+        .map_err(|_| "本地数据库暂时不可用")?
+        .is_subscription(id)?;
+    if subscription {
+        let ics = feeds::fetch(&account.url, account.allow_http).await?;
+        check_cancelled(cancel)?;
+        store
+            .lock()
+            .map_err(|_| "本地数据库暂时不可用")?
+            .refresh_feed(id, &account.url, &ics)?;
+        let _ = app.emit("shixu:changed", ());
         return Ok(());
     }
     if !account.password.starts_with("dpapi:v1:") {
@@ -311,6 +326,7 @@ async fn shixu_call(
         && matches!(
             method.as_str(),
             "saveAccount"
+                | "importCalendarUrl"
                 | "deleteAccount"
                 | "queueEvent"
                 | "resolveConflict"
@@ -322,6 +338,31 @@ async fn shixu_call(
         )
     {
         return Ok(json!({"ok":false,"error":"更新正在安装，请稍后再修改数据"}));
+    }
+    if method == "importCalendarUrl" {
+        let result: Result<Value, String> = async {
+            if args.len() != 1 {
+                return Err("ICS 导入参数无效".into());
+            }
+            let mut input: feeds::FeedInput =
+                serde_json::from_value(args[0].clone()).map_err(|_| "ICS 导入参数无效")?;
+            input.validate()?;
+            let ics = feeds::fetch(&input.url, input.allow_http).await?;
+            if app.state::<updates::Updates>().is_installing() {
+                return Err("更新正在安装，请稍后导入".into());
+            }
+            let id = store
+                .lock()
+                .map_err(|_| "本地数据库暂时不可用")?
+                .import_feed(&input, &ics)?;
+            let _ = app.emit("shixu:changed", ());
+            Ok(json!(id))
+        }
+        .await;
+        return Ok(match result {
+            Ok(value) => json!({"ok":true,"value":value}),
+            Err(error) => json!({"ok":false,"error":error}),
+        });
     }
     if method == "testAccount" {
         let result: Result<Value, String> = async {

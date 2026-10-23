@@ -3,9 +3,9 @@
 .month-weekdays { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); flex:none; border-bottom:1px solid var(--line); }
 .month-weekdays span { padding:10px 8px; text-align:center; font-size:14px; color:var(--text); font-weight:500; }
 .month-weekdays .weekend { color:var(--muted); }
-.month-scroll { flex:1; min-height:0; overflow:auto; }
-.month-grid { height:100%; min-height:360px; display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); grid-template-rows:repeat(6,minmax(0,1fr)); contain:layout paint; }
-.month-week-row { display:contents; }
+.month-scroll { flex:1; min-height:0; overflow:hidden; }
+.month-grid { height:100%; min-height:0; display:grid; grid-template-columns:minmax(0,1fr); grid-template-rows:repeat(6,minmax(0,1fr)); contain:layout paint; container-type:size; }
+.month-week-row { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); position:relative; min-height:0; min-width:0; overflow:hidden; }
 .month-cell { min-width:0; min-height:0; overflow:hidden; position:relative; border-right:1px solid var(--line); border-bottom:1px solid var(--line); background:var(--bg); }
 .month-cell:nth-child(7n) { border-right:0; }
 .month-cell.weekend { background:var(--weekend-bg); }
@@ -22,12 +22,12 @@
 .month-cell.other-month .month-day-button { color:var(--faint); }
 .month-cell.other-month .lunar-date { color:var(--faint); }
 .month-day-button .month-holiday { top:11px; right:6px; width:15px; height:15px; font-size:9px; }
-.month-event-list { display:flex; flex-direction:column; gap:2px; padding:0 5px 3px; min-width:0; }
+.month-event-list { display:flex; flex-direction:column; gap:2px; padding:0 0 3px; min-width:0; }
 .month-event { border:0; min-width:0; color:var(--text); margin:0; flex-shrink:0; }
-.event-capsule { width:100%; display:flex; gap:5px; justify-content:flex-start; height:22px; padding:2px 7px; font-size:12px; font-weight:500; line-height:18px; border-radius:12px; background:color-mix(in oklab,var(--event-color) 18%,var(--bg)); }
+.event-capsule { width:100%; display:flex; gap:4px; justify-content:flex-start; height:18px; padding:1px 5px; font-size:11px; font-weight:500; line-height:16px; border-radius:9px; background:color-mix(in oklab,var(--event-color) 18%,var(--bg)); }
 .event-capsule:hover { background:color-mix(in oklab,var(--event-color) 29%,var(--bg)); }
 .event-color-dot { width:7px; height:7px; border-radius:50%; background:var(--event-color); flex:none; }
-.month-event-time { flex:none; font-size:10px; font-variant-numeric:tabular-nums; color:var(--muted); }
+.month-event-time { flex:none; font-size:9px; font-variant-numeric:tabular-nums; color:var(--muted); }
 .month-event-title { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; min-width:0; text-align:left; }
 .month-event.event-pending { opacity:1; }
 .month-event.event-pending .event-color-dot { background:transparent; border:1.5px solid var(--event-color); }

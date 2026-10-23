@@ -16,6 +16,10 @@ export async function davServer() {
   const server = createServer(async (req, res) => {
     const path = new URL(req.url!, 'http://localhost').pathname, method = req.method!;
     requests.push({ method, url: path, ifMatch: req.headers['if-match'] as string | undefined, ifNoneMatch: req.headers['if-none-match'] as string | undefined });
+    if (path === '/subscription.ics' && method === 'GET') {
+      const item = resources.get(path);
+      res.writeHead(item ? 200 : 404, { 'Content-Type': 'text/calendar' }); res.end(item?.ics); return;
+    }
     if (req.headers.authorization !== `Basic ${Buffer.from('alice:fixture-only-secret').toString('base64')}`) { res.writeHead(401); res.end(); return; }
     if (status) { res.writeHead(status); res.end(); return; }
     const chunks: Buffer[] = []; for await (const c of req) chunks.push(Buffer.from(c)); const body = Buffer.concat(chunks).toString();

@@ -8,7 +8,7 @@ export function monthDays(month: string, firstDay: number, timezone: string): st
 }
 export function monthLayout(width: number, height: number) {
   const column = width / 7, row = height / 6;
-  return { compact: column < 116 || row < 88, capacity: Math.max(1, Math.min(5, Math.floor((row - 62) / 24))), dots: Math.max(1, Math.min(5, Math.floor((column - 36) / 20))) };
+  return { compact: column < 116 || row < 88, capacity: Math.max(1, Math.min(5, Math.floor((row - 62) / 20))), dots: Math.max(1, Math.min(5, Math.floor((column - 36) / 20))) };
 }
 /** Compare civil dates; all-day DTEND is exclusive, timed ends use an instant. */
 export function groupMonthEvents(events: CalendarEvent[], days: string[], timezone: string) {

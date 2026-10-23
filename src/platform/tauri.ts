@@ -26,6 +26,7 @@ if (window.__TAURI_INTERNALS__) {
     return () => { cancelled = true; unlisten?.(); };
   };
   const api: Api = {
+    importCalendarUrl: input => call('importCalendarUrl', input),
     updateState: () => call<UpdateState>('updateState'),
     checkForUpdates: () => call('checkForUpdates'),
     downloadUpdate: () => call('downloadUpdate'),

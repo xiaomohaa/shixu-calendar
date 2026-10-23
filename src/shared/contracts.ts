@@ -8,7 +8,7 @@ export const accountInput = z.object({
   paused: z.boolean().default(false),
 });
 export type AccountInput = z.infer<typeof accountInput>;
-export interface Account extends Omit<AccountInput, 'password' | 'id'> { id: string; lastSync: string | null; error: string | null }
+export interface Account extends Omit<AccountInput, 'password' | 'id'> { id: string; lastSync: string | null; error: string | null; subscription?: boolean }
 export interface Calendar { id: string; accountId: string; url: string; name: string; color: string; visible: boolean; readOnly: boolean }
 export const settingsSchema = z.object({
   theme: z.enum(['system', 'light', 'dark']), view: z.enum(['dayGridMonth', 'timeGridWeek', 'timeGridDay', 'listMonth']),
@@ -35,6 +35,7 @@ export interface Conflict { id: string; resourceId: string; localIcs: string; re
 export interface Snapshot { accounts: Account[]; calendars: Calendar[]; settings: Settings; pending: number; conflicts: Conflict[]; syncing: string[]; bytes: number; resources: number; diagnostics: string[] }
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 export interface Api {
+  importCalendarUrl?(input: { name: string; url: string; allowHttp: boolean }): Promise<string>;
   updateState(): Promise<UpdateState>;
   checkForUpdates(): Promise<void>;
   downloadUpdate(): Promise<void>;

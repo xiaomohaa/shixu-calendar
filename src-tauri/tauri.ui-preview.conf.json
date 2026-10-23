@@ -10,8 +10,8 @@
       "title": "时序日历 2.0 开发预览",
       "width": 1380,
       "height": 900,
-      "minWidth": 1000,
-      "minHeight": 680,
+      "minWidth": 480,
+      "minHeight": 360,
       "resizable": true
     }]
   },

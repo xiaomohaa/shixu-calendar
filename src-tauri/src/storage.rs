@@ -98,6 +98,7 @@ impl Store {
         )?;
         let mut store = Self { db };
         store.migrate()?;
+        store.db.execute_batch("CREATE TABLE IF NOT EXISTS ics_subscriptions(accountId TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE)")?;
         Ok(store)
     }
 
@@ -150,12 +151,12 @@ impl Store {
     }
 
     pub fn snapshot(&self, defaults: Value) -> rusqlite::Result<Value> {
-        let accounts = self.db.prepare("SELECT id,name,url,username,allowHttp,paused,lastSync,error FROM accounts")?
+        let accounts = self.db.prepare("SELECT id,name,url,username,allowHttp,paused,lastSync,error,EXISTS(SELECT 1 FROM ics_subscriptions s WHERE s.accountId=accounts.id) FROM accounts")?
             .query_map([], |row| Ok(json!({
                 "id": row.get::<_, String>(0)?, "name": row.get::<_, String>(1)?,
                 "url": row.get::<_, String>(2)?, "username": row.get::<_, String>(3)?,
                 "allowHttp": row.get::<_, bool>(4)?, "paused": row.get::<_, bool>(5)?,
-                "lastSync": row.get::<_, Option<String>>(6)?, "error": row.get::<_, Option<String>>(7)?
+                "lastSync": row.get::<_, Option<String>>(6)?, "error": row.get::<_, Option<String>>(7)?, "subscription": row.get::<_, bool>(8)?
             })))?.collect::<rusqlite::Result<Vec<_>>>()?;
         let calendars = self
             .db
@@ -221,6 +222,53 @@ impl Store {
             [&value],
         ).map_err(|_| "保存日历设置失败")?;
         Ok(())
+    }
+
+    pub fn is_subscription(&self, id: &str) -> Result<bool, String> {
+        self.db
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM ics_subscriptions WHERE accountId=?)",
+                [id],
+                |row| row.get(0),
+            )
+            .map_err(|_| "读取订阅日历失败".into())
+    }
+
+    pub fn import_feed(
+        &mut self,
+        input: &crate::feeds::FeedInput,
+        ics: &str,
+    ) -> Result<String, String> {
+        let existing: Option<String> = self.db.query_row("SELECT a.id FROM accounts a JOIN ics_subscriptions s ON s.accountId=a.id WHERE a.url=?", [&input.url], |r| r.get(0)).optional().map_err(|_| "读取订阅日历失败")?;
+        if existing.is_some() {
+            return Err("这个 ICS 日历已经导入，可点击同步刷新".into());
+        }
+        let id = Uuid::new_v4().to_string();
+        let calendar = Uuid::new_v4().to_string();
+        let tx = self.db.transaction().map_err(|_| "无法开始导入日历")?;
+        tx.execute("INSERT INTO accounts(id,name,url,username,password,allowHttp,lastSync) VALUES(?,?,?,'ICS 订阅','',?,?)", rusqlite::params![id,input.name,input.url,input.allow_http,chrono::Utc::now().to_rfc3339()]).map_err(|_| "保存订阅失败")?;
+        tx.execute("INSERT INTO ics_subscriptions(accountId) VALUES(?)", [&id])
+            .map_err(|_| "保存订阅类型失败")?;
+        tx.execute("INSERT INTO calendars(id,accountId,url,name,color,readOnly) VALUES(?,?,?,?,'#497bba',1)",rusqlite::params![calendar,id,input.url,input.name]).map_err(|_| "保存订阅日历失败")?;
+        tx.execute(
+            "INSERT INTO event_resources(id,calendarId,url,ics) VALUES(?,?,?,?)",
+            rusqlite::params![Uuid::new_v4().to_string(), calendar, input.url, ics],
+        )
+        .map_err(|_| "保存订阅日程失败")?;
+        tx.commit().map_err(|_| "提交日历导入失败")?;
+        Ok(id)
+    }
+
+    pub fn refresh_feed(&mut self, id: &str, url: &str, ics: &str) -> Result<(), String> {
+        let tx = self.db.transaction().map_err(|_| "无法开始订阅同步")?;
+        let calendar: String = tx.query_row("SELECT c.id FROM calendars c JOIN ics_subscriptions s ON s.accountId=c.accountId WHERE s.accountId=?", [id], |r| r.get(0)).map_err(|_| "订阅日历已被移除")?;
+        tx.execute("INSERT INTO event_resources(id,calendarId,url,ics) VALUES(?,?,?,?) ON CONFLICT(calendarId,url) DO UPDATE SET ics=excluded.ics",rusqlite::params![Uuid::new_v4().to_string(),calendar,url,ics]).map_err(|_| "更新订阅日程失败")?;
+        tx.execute(
+            "UPDATE accounts SET lastSync=?,error=NULL WHERE id=?",
+            rusqlite::params![chrono::Utc::now().to_rfc3339(), id],
+        )
+        .map_err(|_| "更新订阅状态失败")?;
+        tx.commit().map_err(|_| "提交订阅同步失败".into())
     }
 
     pub fn close_to_tray(&self) -> bool {
@@ -973,7 +1021,7 @@ impl Store {
     pub fn rewrap_legacy_credentials(&mut self, local_state: &Path) -> Result<(), String> {
         let accounts: Vec<(String, String)> = self
             .db
-            .prepare("SELECT id,password FROM accounts")
+            .prepare("SELECT id,password FROM accounts WHERE NOT EXISTS(SELECT 1 FROM ics_subscriptions s WHERE s.accountId=accounts.id)")
             .and_then(|mut statement| {
                 statement
                     .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?

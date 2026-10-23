@@ -18,11 +18,20 @@ import { MonthDate } from './MonthDate';
 import { calendarDateKey } from '../calendar/chineseCalendar';
 import { UpdateNotice } from './Updates';
 import { MonthGrid } from './MonthGrid';
+import { eventHasEnded } from '../calendar/eventDisplay';
 import { monthDays } from '../calendar/monthLayout';
 const calendarPlugins = [dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin, luxonPlugin];
 
 export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null), [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const update = () => setNow(Date.now());
+    const timer = setInterval(update, 30000);
+    window.addEventListener('focus', update);
+    document.addEventListener('visibilitychange', update);
+    return () => { clearInterval(timer); window.removeEventListener('focus', update); document.removeEventListener('visibilitychange', update); };
+  }, []);
   const [view, setView] = useState('dayGridMonth'), [title, setTitle] = useState(''), [selected, setSelected] = useState(DateTime.local().toISODate()!);
   const [month, setMonth] = useState(DateTime.local().startOf('month').toISODate()!);
   const [miniMonth, setMiniMonth] = useState<DateTime>(DateTime.local().startOf('month')), [sidebar, setSidebar] = useState(true);
@@ -107,8 +116,8 @@ export function App() {
   const filtered = useMemo(() => events.filter(e => `${e.title} ${e.location} ${e.description}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())), [events, query]);
   const fcEvents: FCEvent[] = useMemo(() => filtered.map(e => {
     const c = snapshot?.calendars.find(c => c.id === e.calendarId), color = c?.color || '#d65c4f';
-    return { id: e.id, title: e.title, start: e.start, end: e.end, allDay: e.allDay, backgroundColor: color, borderColor: color, textColor: '#fdfcfb', editable: !c?.readOnly && !e.conflict, classNames: [e.pending ? 'event-pending' : '', e.conflict ? 'event-conflict' : ''], extendedProps: { ...e, color } };
-  }), [filtered, snapshot?.calendars]);
+    return { id: e.id, title: e.title, start: e.start, end: e.end, allDay: e.allDay, backgroundColor: color, borderColor: color, textColor: '#fdfcfb', editable: !c?.readOnly && !e.conflict, classNames: [e.pending ? 'event-pending' : '', e.conflict ? 'event-conflict' : '', eventHasEnded(e, snapshot?.settings.timezone || 'local', now) ? 'event-ended' : ''], extendedProps: { ...e, color } };
+  }), [filtered, snapshot?.calendars, snapshot?.settings.timezone, now]);
   const firstDay = prefs?.firstDay ?? 1, offset = (miniMonth.weekday % 7 - firstDay + 7) % 7;
   const miniStart = miniMonth.minus({ days: offset }), days = Array.from({ length: 42 }, (_, i) => miniStart.plus({ days: i }));
   const today = DateTime.now().setZone(prefs?.timezone || 'local').toISODate();
@@ -123,7 +132,7 @@ export function App() {
         {!snapshot?.accounts.length && <button className="connect-calendar" onClick={() => setSettingsTab('accounts')}><Cloud size={17}/><span>连接 CalDAV 账户<small>同步你已有的日程</small></span><ChevronRight size={14}/></button>}
         {snapshot?.accounts.map(a => <section className="calendar-account" key={a.id}><div className="account-label"><span>{a.name}</span>{a.error ? <TriangleAlert size={13} className="text-error"/> : a.paused ? <CloudOff size={13}/> : sSync(snapshot, a.id) ? <RefreshCw size={13} className="spin"/> : <Cloud size={13}/>}</div>{snapshot.calendars.filter(c => c.accountId === a.id).map(c => <label className="calendar-toggle" key={c.id}><input type="checkbox" style={{ accentColor: c.color }} checked={c.visible} onChange={e => void execute(() => window.shixu.setCalendar(c.id, e.target.checked, c.color))}/><span>{c.name}</span>{c.readOnly && <small>只读</small>}</label>)}</section>)}
       </div>
-      <section className="day-summary"><div className="sidebar-section-heading"><h2>{DateTime.fromISO(selected).setLocale('zh-cn').toFormat(prefs?.dateFormat === 'numeric' ? 'yyyy/MM/dd cccc' : 'M月d日 cccc')}</h2><small>{selectedEvents.length} 项</small></div><Almanac date={selected}/>{selectedEvents.slice(0, 4).map(e => <button className="summary-event" key={e.id} onClick={() => openEvent(e)}><i className="color-dot" style={{ background: snapshot?.calendars.find(c => c.id === e.calendarId)?.color }}/><div><span>{e.title}</span><small>{e.allDay ? '全天' : DateTime.fromISO(e.start).setZone(prefs?.timezone || 'local').toFormat(prefs?.timeFormat === '12' ? 'h:mm a' : 'HH:mm')}</small></div></button>)}{selectedEvents.length === 0 && <p className="empty-day-message">这一天，还留有空白。</p>}</section>
+      <section className="day-summary"><div className="sidebar-section-heading"><h2>{DateTime.fromISO(selected).setLocale('zh-cn').toFormat(prefs?.dateFormat === 'numeric' ? 'yyyy/MM/dd cccc' : 'M月d日 cccc')}</h2><small>{selectedEvents.length} 项</small></div><Almanac date={selected}/>{selectedEvents.slice(0, 4).map(e => <button className={`summary-event ${eventHasEnded(e, prefs?.timezone || 'local', now) ? 'event-ended' : ''}`} key={e.id} onClick={() => openEvent(e)}><i className="color-dot" style={{ background: snapshot?.calendars.find(c => c.id === e.calendarId)?.color }}/><div><span>{e.title}</span><small>{e.allDay ? '全天' : DateTime.fromISO(e.start).setZone(prefs?.timezone || 'local').toFormat(prefs?.timeFormat === '12' ? 'h:mm a' : 'HH:mm')}</small></div></button>)}{selectedEvents.length === 0 && <p className="empty-day-message">这一天，还留有空白。</p>}</section>
       </div>
       <div className="sidebar-footer"><button onClick={() => setSettingsTab('accounts')}><Settings2 size={17}/>设置</button><span title={snapshot?.accounts.find(a => a.error)?.error || '本地缓存可离线使用'}>{snapshot?.syncing.length ? <RefreshCw size={13} className="spin"/> : snapshot?.accounts.some(a => a.error) ? <CloudOff size={13}/> : <CircleCheck size={13}/>} {snapshot?.pending ? `${snapshot.pending} 项待同步` : '本地已保存'}</span></div>
     </aside>
@@ -140,7 +149,7 @@ export function App() {
       {snapshot?.diagnostics.map(d => <div className="app-error" key={d}><TriangleAlert size={16}/>{d}</div>)}
       <UpdateNotice open={() => setSettingsTab('updates')}/>
       {!loading && snapshot?.accounts.length === 0 && <div className="onboarding-strip"><Cloud size={18}/><div><strong>从你的第一本日历开始</strong><span>连接 CalDAV 账户，日程即可在这里出现。</span></div><button onClick={() => setSettingsTab('accounts')}>连接账户<ChevronRight size={15}/></button></div>}
-      <div className="calendar-container" ref={calendarContainer}>{loading ? <div className="calendar-loading">正在读取本地日历…</div> : view === 'dayGridMonth' ? <MonthGrid month={month} firstDay={firstDay} timezone={prefs?.timezone || 'local'} selected={selected} timeFormat={prefs?.timeFormat || '24'} events={filtered} calendars={snapshot?.calendars || []} select={setSelected} create={create} open={openEvent} move={moveMonthEvent}/> : <FullCalendar key={booted.current ? 'calendar' : 'initial'} ref={calendarRef} plugins={calendarPlugins} locale={zhCn} initialView={view} initialDate={selected} handleWindowResize={false} headerToolbar={false} height="100%" firstDay={firstDay} timeZone={prefs?.timezone || 'local'} events={fcEvents} selectable selectMirror editable nowIndicator dayMaxEvents={true} moreLinkText={n => `还有 ${n} 项`} allDayText="全天" noEventsContent="这段时间没有安排，留一点时间给自己。" eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: prefs?.timeFormat === '12' }} slotLabelFormat={{ hour: 'numeric', minute: '2-digit', hour12: prefs?.timeFormat === '12' }} slotMinTime="00:00:00" slotMaxTime="24:00:00" scrollTime="08:00:00" slotDuration="00:30:00" defaultTimedEventDuration={{ minutes: prefs?.duration || 60 }} weekends fixedWeekCount displayEventTime
+      <div className="calendar-container" ref={calendarContainer}>{loading ? <div className="calendar-loading">正在读取本地日历…</div> : view === 'dayGridMonth' ? <MonthGrid now={now} month={month} firstDay={firstDay} timezone={prefs?.timezone || 'local'} selected={selected} timeFormat={prefs?.timeFormat || '24'} events={filtered} calendars={snapshot?.calendars || []} select={setSelected} create={create} open={openEvent} move={moveMonthEvent}/> : <FullCalendar key={booted.current ? 'calendar' : 'initial'} ref={calendarRef} plugins={calendarPlugins} locale={zhCn} initialView={view} initialDate={selected} handleWindowResize={false} headerToolbar={false} height="100%" firstDay={firstDay} timeZone={prefs?.timezone || 'local'} events={fcEvents} selectable selectMirror editable nowIndicator dayMaxEvents={true} moreLinkText={n => `还有 ${n} 项`} allDayText="全天" noEventsContent="这段时间没有安排，留一点时间给自己。" eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: prefs?.timeFormat === '12' }} slotLabelFormat={{ hour: 'numeric', minute: '2-digit', hour12: prefs?.timeFormat === '12' }} slotMinTime="00:00:00" slotMaxTime="24:00:00" scrollTime="08:00:00" slotDuration="00:30:00" defaultTimedEventDuration={{ minutes: prefs?.duration || 60 }} weekends fixedWeekCount displayEventTime
         datesSet={datesSet}
         dateClick={info => { const date = info.dateStr.slice(0, 10); setSelected(date); if (info.jsEvent.detail === 2) create(info.dateStr, undefined, info.allDay); }}
         select={info => { if (info.allDay && Date.parse(info.endStr) - Date.parse(info.startStr) <= 86400000) return; create(info.startStr, info.endStr, info.allDay); calendarRef.current?.getApi().unselect(); }}

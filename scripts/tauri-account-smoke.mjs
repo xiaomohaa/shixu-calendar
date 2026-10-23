@@ -143,9 +143,62 @@ try {
   await page.waitForFunction(async () => (await window.shixu.events('2026-10-22T00:00:00Z', '2026-10-25T00:00:00Z')).some(event => event.title === 'Tauri 界面修改'));
   const uiEvent = (await page.evaluate(() => window.shixu.events('2026-10-22T00:00:00Z', '2026-10-25T00:00:00Z'))).find(event => event.title === 'Tauri 界面修改');
   if (!uiEvent) throw new Error('Tauri UI did not persist the edited event');
+  await page.evaluate(async calendarId => {
+    for (const [title, start, end] of [
+      ['连续跨天胶囊', '2026-10-26', '2026-10-29'],
+      ['已结束跨天胶囊', '2026-10-19', '2026-10-22'],
+      ['跨周续接胶囊', '2026-10-31', '2026-11-04'],
+    ]) await window.shixu.saveEvent({ calendarId, title, start, end, allDay: true, timezone: 'Asia/Shanghai', location: '', description: '', rrule: '', reminder: -1, scope: 'series' });
+  }, calendar);
+  const span = page.locator('.month-span').filter({ has: page.getByRole('button', { name: /连续跨天胶囊/ }) });
+  await span.waitFor();
+  const box = await span.boundingBox();
+  const firstDay = await page.locator('.month-cell[data-date="2026-10-26"]').boundingBox();
+  const lastDay = await page.locator('.month-cell[data-date="2026-10-28"]').boundingBox();
+  if (Math.abs(box.x - firstDay.x) > 2 || Math.abs(box.x + box.width - lastDay.x - lastDay.width) > 2) throw new Error('Multi-day capsule does not align with start and end grid lines');
+  const capsuleStyle = await span.locator('button').evaluate(el => ({ height: el.getBoundingClientRect().height, font: getComputedStyle(el).fontSize }));
+  if (capsuleStyle.height > 18 || capsuleStyle.font !== '11px') throw new Error('Capsule size regression');
+  if (await page.locator('.month-span').filter({ has: page.getByRole('button', { name: /跨周续接胶囊/ }) }).count() !== 2) throw new Error('Cross-week capsule continuation failed');
+  if (await page.locator('.month-cell .month-event').filter({ hasText: '连续跨天胶囊' }).count()) throw new Error('Multi-day capsule was duplicated in individual day cells');
+  const past = page.locator('.month-span').filter({ has: page.getByRole('button', { name: /已结束跨天胶囊/ }) }).locator('button');
+  if (await past.evaluate(el => Number(getComputedStyle(el).opacity)) >= .6) throw new Error('Ended event was not faded');
+  await page.screenshot({ path: '.smoke-data/month-display.png' });
   await page.evaluate(id => window.shixu.deleteAccount(id), report.id);
   if ((await page.evaluate(() => window.shixu.snapshot())).accounts.length) throw new Error('Tauri account deletion failed');
-  console.log('PASS: Tauri DAV, DPAPI, pull, conditional writes, conflicts, API and UI event CRUD, account cleanup');
+  fixture.put('/subscription.ics', fixtureIcs('ICS 链接导入'));
+  await page.getByRole('button', { name: '打开设置', exact: true }).click();
+  await page.locator('.ics-import summary').click();
+  await page.getByRole('textbox', { name: '订阅日历名称', exact: true }).fill('链接订阅测试');
+  await page.getByRole('textbox', { name: 'ICS 链接', exact: true }).fill(`${fixture.url}/subscription.ics`);
+  await page.getByRole('checkbox', { name: '允许 HTTP 链接', exact: true }).check();
+  await page.getByRole('button', { name: '导入 ICS 日历', exact: true }).click();
+  await page.getByText('日历已导入，可在侧栏查看或调整颜色。', { exact: true }).waitFor();
+  const feedSnapshot = await page.evaluate(() => window.shixu.snapshot());
+  const feed = feedSnapshot.accounts.find(a => a.subscription);
+  if (!feed || !feedSnapshot.calendars[0]?.readOnly) throw new Error('ICS import did not create a read-only subscription');
+  const feedEvents = await page.evaluate(() => window.shixu.events('2026-10-22', '2026-10-25'));
+  if (!feedEvents.some(e => e.title === 'ICS 链接导入')) throw new Error('ICS imported event was not expanded');
+  const writeRejected = await page.evaluate(async calendarId => {
+    try { await window.shixu.saveEvent({ calendarId, title: '禁止写入', start: '2026-10-23', end: '2026-10-24', allDay: true, timezone: 'Asia/Shanghai', location: '', description: '', rrule: '', reminder: -1, scope: 'series' }); return false; }
+    catch (error) { return String(error).includes('只读'); }
+  }, feedSnapshot.calendars[0].id);
+  if (!writeRejected) throw new Error('ICS subscription allowed editing');
+  fixture.put('/subscription.ics', fixtureIcs('ICS 订阅刷新'));
+  await page.evaluate(id => window.shixu.sync(id), feed.id);
+  if (!(await page.evaluate(() => window.shixu.events('2026-10-22', '2026-10-25'))).some(e => e.title === 'ICS 订阅刷新')) throw new Error('ICS subscription sync failed');
+  await page.reload();
+  await page.locator('.month-grid').waitFor();
+  if (!(await page.evaluate(() => window.shixu.snapshot())).accounts.some(a => a.subscription)) throw new Error('ICS subscription did not persist');
+  await page.evaluate(id => window.shixu.deleteAccount(id), feed.id);
+  if (process.env.SHIXU_TEST_ICLOUD === '1') {
+    const liveFeed = await page.evaluate(() => window.shixu.importCalendarUrl({ name: '中国节假日', url: 'https://calendars.icloud.com/holidays/cn_zh.ics/', allowHttp: false }));
+    const holidays = await page.evaluate(() => window.shixu.events('2026-01-01', '2027-01-01'));
+    if (!holidays.length) throw new Error('Actual iCloud feed imported without visible holidays');
+    await page.evaluate(id => window.shixu.deleteAccount(id), liveFeed);
+    console.log(`PASS: actual iCloud ICS URL imported ${holidays.length} holiday instances in 2026`);
+  }
+  console.log('PASS: ICS URL import UI, read-only enforcement, refresh and persistent subscription');
+  console.log('PASS: Tauri DAV, event CRUD, continuous cross-day/cross-week capsules, compact size, grid alignment and ended fading');
 } finally {
   await browser?.close();
   app.kill();
