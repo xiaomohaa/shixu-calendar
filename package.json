@@ -19,6 +19,7 @@
     "test:updater": "node scripts/update-smoke.mjs",
     "release:publish": "node scripts/publish.mjs",
     "test:resize": "node scripts/resize-smoke.mjs",
+    "test:ics-worker": "node scripts/ics-worker-smoke.mjs",
     "tauri:probe": "tauri build"
   },
   "dependencies": {

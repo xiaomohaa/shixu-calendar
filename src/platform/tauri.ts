@@ -1,12 +1,15 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { Api, Result } from '../shared/contracts';
+import type { Api, Result, Snapshot } from '../shared/contracts';
 import { defaultSettings } from '../shared/contracts';
 import type { DesktopState, UpdateState } from '../shared/updates';
+import { expandInWorker } from './icsWorker';
+import type { Resource } from '../database/store';
 
 declare global { interface Window { __TAURI_INTERNALS__?: unknown } }
 
 if (window.__TAURI_INTERNALS__) {
+  let diagnostics: string[] = [];
   const call = async <T>(method: string, ...args: unknown[]): Promise<T> => {
     const result = await invoke<Result<T>>('shixu_call', { method, args });
     if (!result.ok) throw new Error(result.error);
@@ -31,8 +34,13 @@ if (window.__TAURI_INTERNALS__) {
     desktopState: () => call<DesktopState>('desktopState'),
     setAutoStart: enabled => call<DesktopState>('setAutoStart', enabled),
     quitApp: () => call('quitApp'),
-    snapshot: () => call('snapshot', defaultSettings),
-    events: (start, end) => call('events', start, end),
+    snapshot: async () => ({ ...(await call<Snapshot>('snapshot', defaultSettings)), diagnostics }),
+    events: async (start, end) => {
+      const input = await call<{ resources: Resource[]; visibleCalendars: string[]; conflictResources: string[]; timezone: string }>('eventResources', defaultSettings);
+      const result = await expandInWorker({ ...input, start, end });
+      diagnostics = result.diagnostics;
+      return result.events;
+    },
     eventDetail: (id, scope, rid) => call('eventDetail', id, scope, rid),
     testAccount: input => call('testAccount', input),
     saveAccount: input => call('saveAccount', input),

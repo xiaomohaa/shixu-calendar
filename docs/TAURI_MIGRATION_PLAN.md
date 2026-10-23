@@ -256,7 +256,7 @@ M0 先验证困难点，避免只把 UI 搬到空壳就宣布完成。正式网�
 ## 10. 接续任务记录
 
 - [x] 迁移方案与换机文档编写。
-- [ ] M0 环境/可行性：已复现 Electron 基线、最小 Tauri 构建、SQLite 及同机凭据格式验证；Worker ICS 与更新签名验证待完成。见下方记录。
+- [ ] M0 环境/可行性：已复现 Electron 基线、最小 Tauri 构建、SQLite、同机凭据格式及 Edge 模块 Worker ICS；Tauri WebView2 内验证与更新签名验证待完成。见下方记录。
 - [ ] M1 外壳与 Api：尚未开始。
 - [ ] M2 存储/凭据迁移：尚未开始。
 - [ ] M3 同步/ICS：尚未开始。
@@ -278,10 +278,11 @@ M0 先验证困难点，避免只把 UI 搬到空壳就宣布完成。正式网�
 - 原生命令端已开始接线：独立 Tauri 数据目录中的 Rust SQLite 提供账户、日历、冲突、队列数量和偏好快照（不回传密码字段）；偏好写入校验所有字段、IANA 时区和默认日历，日历显隐/颜色写入校验参数。其他业务方法仍明确返回“尚未开放”，正式 UI 仍不装入测试包。隔离 Rust 测试验证原有数据复制、快照无密文、无效设置不覆盖数据、日历显示设置持久化；`cargo check` 与 `npm run typecheck` 通过。
 - 使用 `.smoke-data/` 内合成账户验证旧凭据封装：`accounts.password` 的 base64 解码结果以 `v10` 开头，Electron `Local State` 的 `os_crypt.encrypted_key` 解码后以 `DPAPI` 开头。当前 Windows 用户用 DPAPI 解出 32 字节密钥，再以 AES-256-GCM 解开 `v10` 的 12 字节 nonce、密文和 16 字节 tag，结果与仅用于冒烟测试的合成密码匹配；测试只输出布尔结果，不打印明文或密钥。这证明同机兼容路线可行，真实数据迁移仍未完成。异机仍需重新输入密码。
 - Rust `vault.rs` 已实现 `dpapi:v1:` 新凭据格式和旧 Electron `v10` 同机读取。DPAPI 输出缓冲复制后擦除，Rust 临时密钥/明文使用 `Zeroizing`；无效新密文被拒绝。独立 Rust 测试用合成凭据验证新格式往返，并用实际 Electron 45 冒烟目录在当前 Windows 用户下验证旧密文解密；测试输出只有通过/失败，不输出密码或密钥。尚未将它接到账户保存和正式迁移流程，异机旧密文继续走重新授权路径。
+- ICS 引擎已去除 `node:crypto` 运行依赖，改用 Web Crypto UUID。Tauri 前端将 Rust 提供的可见资源及冲突标记交给模块 Worker 解析，Worker 沿用现有 `ical.js` 重复逻辑，遇到单个损坏资源时保留其他事件并给出诊断。`npm run test:ics-worker` 在本机 Edge Chromium 实际运行模块 Worker，验证两次重复实例、待同步标记及无诊断；`npm test` 60 项、`npm run build`、Rust 测试与 `cargo check` 通过。Edge 结果尚不能代替 Tauri WebView2 验证，且账户/同步写入尚未接通。
 - `npm ci` 成功；`npm run typecheck` 成功；`npm run build` 成功。构建输出的四个字体文件约 37.1 MB，后续 Tauri 包体积统计仍需单独实测。
 - `npm test` 首次在受限沙箱内有 12 项因 `connect EACCES 127.0.0.1` 失败；允许本机回环连接后重跑，60/60 通过。这是测试环境网络权限所致，未修改协议代码。
 - `npm run smoke` 在允许窗口与本机回环连接的环境中通过 34 项，包括实际 DAV 请求、加密凭据、托盘收纳、字体和四视图。报告由脚本生成在既有验证位置；结果仅代表 Electron 基线。
-- 尚未完成：Worker ICS 原型及更新签名验证。M0 不能标为完成；后续业务接入继续使用隔离数据目录。
+- 尚未完成：Tauri WebView2 内 Worker 与更新签名验证。M0 不能标为完成；后续业务接入继续使用隔离数据目录。
 
 ## 11. 可以直接发给下一台电脑上的 Codex
 

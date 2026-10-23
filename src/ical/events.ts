@@ -1,5 +1,5 @@
 import ICAL from 'ical.js';
-import { randomUUID } from 'node:crypto';
+const randomUUID = () => globalThis.crypto.randomUUID();
 import { DateTime } from 'luxon';
 import type { CalendarEvent, EventInput } from '../shared/contracts';
 import type { Resource } from '../database/store';

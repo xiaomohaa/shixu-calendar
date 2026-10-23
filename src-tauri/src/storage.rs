@@ -193,6 +193,42 @@ impl Store {
         Ok(())
     }
 
+    pub fn event_resources(&self, defaults: Value) -> rusqlite::Result<Value> {
+        let snapshot = self.snapshot(defaults)?;
+        let resources = self
+            .db
+            .prepare(
+                "SELECT r.id,r.calendarId,r.url,r.etag,r.ics,r.dirty,r.deleted
+             FROM event_resources r JOIN calendars c ON c.id=r.calendarId WHERE c.visible=1",
+            )?
+            .query_map([], |row| {
+                Ok(json!({
+                    "id": row.get::<_, String>(0)?, "calendarId": row.get::<_, String>(1)?,
+                    "url": row.get::<_, String>(2)?, "etag": row.get::<_, Option<String>>(3)?,
+                    "ics": row.get::<_, String>(4)?, "dirty": row.get::<_, i64>(5)?,
+                    "deleted": row.get::<_, i64>(6)?
+                }))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let visible: Vec<Value> = snapshot["calendars"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|c| c["visible"] == true)
+            .map(|c| c["id"].clone())
+            .collect();
+        let conflicts: Vec<Value> = snapshot["conflicts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| c["resourceId"].clone())
+            .collect();
+        Ok(json!({
+            "resources": resources, "visibleCalendars": visible,
+            "conflictResources": conflicts, "timezone": snapshot["settings"]["timezone"]
+        }))
+    }
+
     pub fn set_calendar(&self, id: &str, visible: bool, color: &str) -> Result<(), String> {
         if id.is_empty()
             || id.len() > 200
@@ -306,5 +342,16 @@ mod tests {
         let current = copied.snapshot(json!({})).unwrap();
         assert_eq!(current["settings"]["timezone"], "Asia/Shanghai");
         assert_eq!(current["calendars"][0]["visible"], false);
+        let hidden = copied
+            .event_resources(json!({"timezone":"Asia/Shanghai"}))
+            .unwrap();
+        assert_eq!(hidden["resources"].as_array().unwrap().len(), 0);
+        copied.set_calendar("c", true, "#abcdef").unwrap();
+        let visible = copied
+            .event_resources(json!({"timezone":"Asia/Shanghai"}))
+            .unwrap();
+        assert_eq!(visible["resources"][0]["id"], "r");
+        assert_eq!(visible["conflictResources"][0], "r");
+        assert!(!visible.to_string().contains("encrypted"));
     }
 }

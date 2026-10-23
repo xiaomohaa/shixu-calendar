@@ -20,6 +20,9 @@ fn shixu_call(
         "snapshot" if args.len() == 1 && args[0].is_object() => store
             .snapshot(args[0].clone())
             .map_err(|_| "读取本地数据库失败".into()),
+        "eventResources" if args.len() == 1 && args[0].is_object() => store
+            .event_resources(args[0].clone())
+            .map_err(|_| "读取本地日程失败".into()),
         "settings" if args.len() == 1 => {
             changed = true;
             store.set_settings(args[0].clone()).map(|_| Value::Null)
