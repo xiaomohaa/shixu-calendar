@@ -1,0 +1,91 @@
+{
+  "name": "shixu-calendar",
+  "version": "1.1.0",
+  "description": "时序 · 私人的 CalDAV 桌面日历",
+  "private": true,
+  "type": "module",
+  "author": "Shixu Calendar",
+  "license": "MIT",
+  "main": "dist-main/main.cjs",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "npm run typecheck && vite build && node scripts/build-main.mjs",
+    "start": "electron .",
+    "pack": "npm run build && electron-builder --win --x64",
+    "pack:dir": "npm run build && electron-builder --win --x64 --dir",
+    "smoke": "node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "@fullcalendar/core": "6.1.20",
+    "@fullcalendar/daygrid": "6.1.20",
+    "@fullcalendar/interaction": "6.1.20",
+    "@fullcalendar/list": "6.1.20",
+    "@fullcalendar/luxon3": "6.1.20",
+    "@fullcalendar/react": "6.1.20",
+    "@fullcalendar/timegrid": "6.1.20",
+    "fast-xml-parser": "^5.3.0",
+    "ical.js": "2.2.1",
+    "lucide-react": "^0.577.0",
+    "lunar-typescript": "1.8.6",
+    "luxon": "^3.7.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "tsdav": "2.5.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.7.1",
+    "@types/node": "^24.10.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "latest",
+    "electron": "45.0.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "latest",
+    "playwright": "latest",
+    "typescript": "latest",
+    "vite": "8.3.5",
+    "vitest": "latest"
+  },
+  "build": {
+    "appId": "cn.shixu.calendar",
+    "productName": "时序日历",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-main/**/*",
+      "build/icon.png",
+      "build/icon.ico",
+      "package.json",
+      "THIRD_PARTY_NOTICES.md"
+    ],
+    "asar": true,
+    "npmRebuild": false,
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.ico",
+      "signExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "Shixu-Setup-${version}-x64.${ext}",
+      "installerLanguages": [
+        "zh_CN",
+        "en_US"
+      ]
+    },
+    "portable": {
+      "artifactName": "Shixu-Portable-${version}-x64.${ext}"
+    }
+  }
+}

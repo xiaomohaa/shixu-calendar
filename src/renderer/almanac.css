@@ -1,0 +1,46 @@
+/* Center the complete date header; events retain their independent layout. */
+.fc .fc-daygrid-day-top{flex-direction:row;justify-content:center}
+.fc .fc-daygrid-day-number{display:block;width:100%;height:auto;margin:0;padding:0;min-width:0}
+.fc .fc-day-today .fc-daygrid-day-number{background:transparent;color:inherit;border-radius:0;min-width:0}
+.month-date-content{position:relative;display:flex;align-items:center;flex-direction:column;gap:0;padding:5px 6px;width:100%;min-height:50px;overflow:hidden}
+.solar-date{display:grid;place-items:center;width:27px;height:27px;flex-shrink:0;border-radius:50%;font-size:13px;line-height:1;font-variant-numeric:tabular-nums;font-weight:500}
+.fc .fc-day-today .solar-date{background:var(--accent);color:oklch(99% .003 65);font-weight:650}
+.lunar-date{font-size:10px;line-height:15px;min-height:15px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted);font-weight:400}
+.lunar-date.special-date{color:var(--accent)}
+.fc .fc-daygrid-event{margin:2px 0;padding:1px 4px}
+.day-status{display:inline-flex;align-items:center;justify-content:center;width:17px;height:17px;border-radius:4px;font-size:10px;line-height:1;font-weight:600;flex-shrink:0}
+.day-status.rest{background:var(--accent-soft);color:var(--accent)}
+.day-status.work{background:var(--hover);color:var(--muted)}
+.month-holiday{position:absolute;top:8px;right:8px}
+.sidebar-scroll{flex:1;min-height:0;min-width:0;overflow-y:auto;overflow-x:hidden;display:flex;flex-direction:column}
+.sidebar-scroll .mini-grid{grid-template-columns:repeat(7,minmax(0,1fr))}
+.sidebar-scroll .mini-grid button{width:100%;max-width:25px}
+.sidebar-scroll>.mini-calendar{flex-shrink:0}
+.sidebar-scroll>.sidebar-calendars{flex:none;overflow:visible;min-height:auto;padding-bottom:16px}
+.sidebar-scroll>.day-summary{max-height:none;overflow:visible;flex-shrink:0;margin-top:auto}
+.almanac{padding:3px 8px 17px;margin-bottom:9px;border-bottom:1px solid var(--line)}
+.lunar-heading{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.lunar-heading strong{font-size:14px;line-height:1.5;font-weight:600}
+.solar-term-tag{font-size:10px;color:var(--accent);background:var(--accent-soft);padding:2px 5px;border-radius:4px}
+.ganzhi-line{font-size:10px;line-height:1.8;color:var(--muted);margin-top:6px}
+.festival-line{font-size:11px;color:var(--accent);margin-top:6px;line-height:1.7}
+.holiday-line{display:flex;align-items:center;gap:6px;font-size:10px;line-height:1.7;color:var(--muted);margin-top:9px}
+.holiday-line.rest{color:var(--accent)}
+.almanac-preview{display:flex;flex-direction:column;gap:8px;margin-top:15px}
+.almanac-row{display:flex;align-items:flex-start;gap:8px;font-size:10px;line-height:1.9;min-width:0}
+.almanac-row b{font-size:10px;font-weight:600;flex-shrink:0;width:17px;line-height:19px;text-align:center;border-radius:4px}
+.almanac-row.yi b{color:var(--success);background:color-mix(in oklch,var(--success) 9%,transparent)}
+.almanac-row.ji b{color:var(--accent);background:var(--accent-soft)}
+.almanac-row>span{color:var(--muted);min-width:0}
+.almanac-details{margin-top:12px;font-size:10px;color:var(--muted);line-height:1.9}
+.almanac-details summary{cursor:pointer;color:var(--muted);padding:3px 0;user-select:none}
+.almanac-details summary:hover{color:var(--text)}
+.almanac-details dl{display:grid;grid-template-columns:42px minmax(0,1fr);gap:9px 7px;margin:14px 0}
+.almanac-details dt{font-weight:500;color:var(--text)}
+.almanac-details dd{margin:0;overflow-wrap:anywhere}
+.almanac-details small{display:block;font-size:9px;line-height:1.9}
+.holiday-schedule{padding:10px 0;margin:5px 0;border-top:1px solid var(--line)}
+.holiday-schedule strong{font-size:10px;color:var(--text);font-weight:550}
+.day-summary .holiday-schedule p{font-size:10px;color:var(--muted);padding:3px 0}
+.day-summary .empty-day-message{padding:9px 8px;font-size:11px;color:var(--faint)}
+@media(max-height:760px){.sidebar{padding-top:18px}.brand{padding-bottom:18px}.mini-calendar{padding-top:12px;padding-bottom:14px}.mini-grid{row-gap:1px}.lunar-heading strong{font-size:13px}}
