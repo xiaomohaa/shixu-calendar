@@ -1,4 +1,6 @@
 mod storage;
+#[cfg(windows)]
+mod vault;
 use serde_json::{Value, json};
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
