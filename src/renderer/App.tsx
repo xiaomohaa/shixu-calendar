@@ -32,7 +32,7 @@ export function App() {
   const loadId = useRef(0), booted = useRef(false), searchRef = useRef<HTMLInputElement>(null);
   const calendarContainer = useRef<HTMLDivElement>(null);
   const refresh = useCallback(async () => {
-    if (!window.shixu) { setError('请使用 Electron 桌面应用打开此日历。浏览器预览无法访问本地数据库。'); setLoading(false); return; }
+    if (!window.shixu) { setError('请使用桌面应用打开此日历。浏览器预览无法访问本地数据库。'); setLoading(false); return; }
     const id = ++loadId.current;
     try {
       const list = await window.shixu.events(range.current.start, range.current.end);

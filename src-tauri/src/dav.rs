@@ -59,9 +59,37 @@ pub struct Calendar {
     pub read_only: bool,
 }
 
+pub struct RemoteObject {
+    pub url: String,
+    pub etag: Option<String>,
+    pub ics: Option<String>,
+    pub deleted: bool,
+}
+pub struct Pull {
+    pub objects: Vec<RemoteObject>,
+    pub token: Option<String>,
+    pub full: bool,
+}
+pub struct RemoteGet {
+    pub ics: String,
+    pub etag: Option<String>,
+}
+
+fn escape_xml(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
 #[derive(Default)]
 struct Entry {
     href: String,
+    status: u16,
+    etag: Option<String>,
+    ics: Option<String>,
     calendar: bool,
     vevent: bool,
     display_name: String,
@@ -69,6 +97,11 @@ struct Entry {
     home: Option<String>,
     principal: Option<String>,
     read_only: bool,
+}
+
+struct DavResult {
+    entries: Vec<Entry>,
+    token: Option<String>,
 }
 
 fn child<'a>(node: Node<'a, 'a>, name: &str) -> Option<Node<'a, 'a>> {
@@ -92,7 +125,7 @@ fn status(node: Node<'_, '_>) -> u16 {
         .unwrap_or(200)
 }
 
-fn parse_dav(xml: &str) -> Result<Vec<Entry>, String> {
+fn parse_dav(xml: &str) -> Result<DavResult, String> {
     if xml.len() > LIMIT || xml.contains("<!DOCTYPE") || xml.contains("<!ENTITY") {
         return Err("服务器返回的 DAV XML 无效".into());
     }
@@ -101,6 +134,9 @@ fn parse_dav(xml: &str) -> Result<Vec<Entry>, String> {
         return Err("服务器未返回 DAV multistatus，请检查服务地址".into());
     }
     let mut entries = Vec::new();
+    let token = child(document.root_element(), "sync-token")
+        .map(text)
+        .filter(|value| !value.is_empty());
     for response in document
         .root_element()
         .children()
@@ -108,6 +144,7 @@ fn parse_dav(xml: &str) -> Result<Vec<Entry>, String> {
     {
         let mut entry = Entry {
             href: href(response).unwrap_or_default(),
+            status: status(response),
             vevent: true,
             ..Entry::default()
         };
@@ -121,6 +158,10 @@ fn parse_dav(xml: &str) -> Result<Vec<Entry>, String> {
                 match item.tag_name().name() {
                     "displayname" => entry.display_name = text(item),
                     "calendar-color" => entry.color = text(item),
+                    "getetag" => entry.etag = Some(text(item)).filter(|value| !value.is_empty()),
+                    "calendar-data" => {
+                        entry.ics = Some(text(item)).filter(|value| !value.is_empty())
+                    }
                     "calendar-home-set" => entry.home = href(item),
                     "current-user-principal" => entry.principal = href(item),
                     "resourcetype" => entry.calendar = child(item, "calendar").is_some(),
@@ -157,7 +198,7 @@ fn parse_dav(xml: &str) -> Result<Vec<Entry>, String> {
         }
         entries.push(entry);
     }
-    Ok(entries)
+    Ok(DavResult { entries, token })
 }
 
 pub fn normalize_url(raw: &str, allow_http: bool) -> Result<Url, String> {
@@ -212,13 +253,18 @@ impl DavClient {
         Ok(url)
     }
 
-    async fn propfind(&self, url: Url, depth: &str) -> Result<(Vec<Entry>, Url), String> {
-        let body = format!("<d:propfind {NS}><d:prop>{PROPERTIES}</d:prop></d:propfind>");
+    async fn xml_request(
+        &self,
+        method: Method,
+        url: Url,
+        depth: &str,
+        body: String,
+    ) -> Result<(DavResult, Url), String> {
         let mut current = url;
         for _ in 0..6 {
             let mut response = self
                 .client
-                .request(Method::from_bytes(b"PROPFIND").unwrap(), current.clone())
+                .request(method.clone(), current.clone())
                 .basic_auth(&self.username, Some(self.password.as_str()))
                 .header("Depth", depth)
                 .header(header::CONTENT_TYPE, "application/xml; charset=utf-8")
@@ -256,6 +302,14 @@ impl DavClient {
             return Ok((parse_dav(xml)?, current));
         }
         Err("服务器重定向次数过多，请填写最终服务地址".into())
+    }
+
+    async fn propfind(&self, url: Url, depth: &str) -> Result<(Vec<Entry>, Url), String> {
+        let body = format!("<d:propfind {NS}><d:prop>{PROPERTIES}</d:prop></d:propfind>");
+        let (result, url) = self
+            .xml_request(Method::from_bytes(b"PROPFIND").unwrap(), url, depth, body)
+            .await?;
+        Ok((result.entries, url))
     }
 
     fn calendars(
@@ -343,12 +397,245 @@ impl DavClient {
         }
         Err("未发现日历，请填写更具体的服务或日历地址".into())
     }
+
+    async fn materialize(
+        &self,
+        entries: Vec<Entry>,
+        base: &Url,
+    ) -> Result<Vec<RemoteObject>, String> {
+        let mut output = Vec::new();
+        let mut missing = Vec::new();
+        for entry in entries {
+            if entry.href.is_empty() {
+                continue;
+            }
+            let url = self.resolve(&entry.href, base)?;
+            if url.path().trim_end_matches('/') == base.path().trim_end_matches('/') {
+                continue;
+            }
+            if matches!(entry.status, 404 | 410) {
+                output.push(RemoteObject {
+                    url: url.to_string(),
+                    etag: None,
+                    ics: None,
+                    deleted: true,
+                });
+            } else if !(200..300).contains(&entry.status) {
+                return Err(format!("CalDAV 服务器返回 HTTP {}", entry.status));
+            } else if let Some(ics) = entry.ics {
+                output.push(RemoteObject {
+                    url: url.to_string(),
+                    etag: entry.etag,
+                    ics: Some(ics),
+                    deleted: false,
+                });
+            } else {
+                missing.push(url);
+            }
+        }
+        let report = Method::from_bytes(b"REPORT").unwrap();
+        for chunk in missing.chunks(80) {
+            let hrefs = chunk
+                .iter()
+                .map(|url| format!("<d:href>{}</d:href>", escape_xml(url.path())))
+                .collect::<String>();
+            let body = format!(
+                "<c:calendar-multiget {NS}><d:prop><d:getetag/><c:calendar-data/></d:prop>{hrefs}</c:calendar-multiget>"
+            );
+            let (result, _) = self
+                .xml_request(report.clone(), base.clone(), "1", body)
+                .await?;
+            let mut mapped = std::collections::HashMap::new();
+            for entry in result.entries {
+                mapped.insert(self.resolve(&entry.href, base)?.to_string(), entry);
+            }
+            for url in chunk {
+                let entry = mapped
+                    .remove(url.as_str())
+                    .ok_or("服务器遗漏 calendar-multiget 资源，已保留原缓存和同步令牌")?;
+                if matches!(entry.status, 404 | 410) {
+                    output.push(RemoteObject {
+                        url: url.to_string(),
+                        etag: None,
+                        ics: None,
+                        deleted: true,
+                    });
+                } else if (200..300).contains(&entry.status) {
+                    let ics = entry
+                        .ics
+                        .ok_or("服务器返回不完整日程数据，已停止本轮同步")?;
+                    output.push(RemoteObject {
+                        url: url.to_string(),
+                        etag: entry.etag,
+                        ics: Some(ics),
+                        deleted: false,
+                    });
+                } else {
+                    return Err("服务器返回不完整日程数据，已停止本轮同步".into());
+                }
+            }
+        }
+        Ok(output)
+    }
+
+    pub async fn pull(&self, calendar: &Calendar, token: Option<&str>) -> Result<Pull, String> {
+        let url = self.resolve(&calendar.url, &self.base)?;
+        let report = Method::from_bytes(b"REPORT").unwrap();
+        let sync_body = format!(
+            "<d:sync-collection {NS}><d:sync-token>{}</d:sync-token><d:sync-level>1</d:sync-level><d:prop><d:getetag/></d:prop></d:sync-collection>",
+            escape_xml(token.unwrap_or(""))
+        );
+        match self
+            .xml_request(report.clone(), url.clone(), "1", sync_body)
+            .await
+        {
+            Ok((result, _)) if result.token.is_some() => {
+                return Ok(Pull {
+                    objects: self.materialize(result.entries, &url).await?,
+                    token: result.token,
+                    full: token.is_none(),
+                });
+            }
+            Ok(_) => {}
+            Err(error)
+                if [400, 403, 404, 405, 409, 410, 501, 507]
+                    .iter()
+                    .any(|status| error.ends_with(&format!("HTTP {status}"))) => {}
+            Err(error) => return Err(error),
+        }
+        let query = format!(
+            "<c:calendar-query {NS}><d:prop><d:getetag/><c:calendar-data/></d:prop><c:filter><c:comp-filter name=\"VCALENDAR\"><c:comp-filter name=\"VEVENT\"/></c:comp-filter></c:filter></c:calendar-query>"
+        );
+        let (result, _) = self.xml_request(report, url.clone(), "1", query).await?;
+        Ok(Pull {
+            objects: self.materialize(result.entries, &url).await?,
+            token: None,
+            full: true,
+        })
+    }
+
+    async fn request_raw(
+        &self,
+        method: Method,
+        url: Url,
+        headers: header::HeaderMap,
+        body: Option<String>,
+    ) -> Result<(reqwest::StatusCode, header::HeaderMap, Vec<u8>), String> {
+        let mut current = self.resolve(url.as_str(), &self.base)?;
+        for _ in 0..6 {
+            let mut request = self
+                .client
+                .request(method.clone(), current.clone())
+                .basic_auth(&self.username, Some(self.password.as_str()))
+                .headers(headers.clone());
+            if let Some(body) = &body {
+                request = request.body(body.clone());
+            }
+            let mut response = request.send().await.map_err(|_| "无法连接 CalDAV 服务器")?;
+            if matches!(response.status().as_u16(), 301 | 302 | 307 | 308) {
+                let location = response
+                    .headers()
+                    .get(header::LOCATION)
+                    .and_then(|v| v.to_str().ok())
+                    .ok_or("服务器重定向地址无效")?;
+                current = self.resolve(location, &current)?;
+                continue;
+            }
+            if response.content_length().is_some_and(|n| n > LIMIT as u64) {
+                return Err("服务器单次响应超过 32MB".into());
+            }
+            let status = response.status();
+            let headers = response.headers().clone();
+            let mut bytes = Vec::new();
+            while let Some(chunk) = response.chunk().await.map_err(|_| "读取 CalDAV 响应失败")?
+            {
+                if bytes.len() + chunk.len() > LIMIT {
+                    return Err("服务器响应过大，已停止读取".into());
+                }
+                bytes.extend_from_slice(&chunk);
+            }
+            return Ok((status, headers, bytes));
+        }
+        Err("服务器重定向次数过多，请填写最终服务地址".into())
+    }
+
+    pub async fn get(&self, url: &str) -> Result<Option<RemoteGet>, String> {
+        let url = self.resolve(url, &self.base)?;
+        let (status, headers, bytes) = self
+            .request_raw(Method::GET, url, header::HeaderMap::new(), None)
+            .await?;
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        if !status.is_success() {
+            return Err(format!("CalDAV 服务器返回 HTTP {}", status.as_u16()));
+        }
+        let ics = String::from_utf8(bytes).map_err(|_| "服务器返回的日程文本无效")?;
+        let etag = headers
+            .get(header::ETAG)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+        Ok(Some(RemoteGet { ics, etag }))
+    }
+
+    pub async fn put(
+        &self,
+        url: &str,
+        ics: &str,
+        etag: Option<&str>,
+    ) -> Result<Option<String>, String> {
+        if ics.len() > LIMIT {
+            return Err("日程资源超过 32MB".into());
+        }
+        let url = self.resolve(url, &self.base)?;
+        let mut headers = header::HeaderMap::new();
+        headers.insert(
+            header::CONTENT_TYPE,
+            header::HeaderValue::from_static("text/calendar; charset=utf-8"),
+        );
+        if let Some(etag) = etag {
+            headers.insert(
+                header::IF_MATCH,
+                header::HeaderValue::from_str(etag).map_err(|_| "ETag 无效")?,
+            );
+        } else {
+            headers.insert(header::IF_NONE_MATCH, header::HeaderValue::from_static("*"));
+        }
+        let (status, headers, _) = self
+            .request_raw(Method::PUT, url, headers, Some(ics.to_owned()))
+            .await?;
+        if !status.is_success() {
+            return Err(format!("CalDAV 服务器返回 HTTP {}", status.as_u16()));
+        }
+        Ok(headers
+            .get(header::ETAG)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned))
+    }
+
+    pub async fn delete(&self, url: &str, etag: &str) -> Result<(), String> {
+        let url = self.resolve(url, &self.base)?;
+        let mut headers = header::HeaderMap::new();
+        headers.insert(
+            header::IF_MATCH,
+            header::HeaderValue::from_str(etag).map_err(|_| "ETag 无效")?,
+        );
+        let (status, _, _) = self.request_raw(Method::DELETE, url, headers, None).await?;
+        if status.is_success() || status == reqwest::StatusCode::NOT_FOUND {
+            Ok(())
+        } else {
+            Err(format!("CalDAV 服务器返回 HTTP {}", status.as_u16()))
+        }
+    }
 }
 
 impl Clone for Entry {
     fn clone(&self) -> Self {
         Self {
             href: self.href.clone(),
+            status: self.status,
+            etag: self.etag.clone(),
+            ics: self.ics.clone(),
             calendar: self.calendar,
             vevent: self.vevent,
             display_name: self.display_name.clone(),
@@ -371,7 +658,7 @@ mod tests {
         assert!(normalize_url("http://example.test/cal", false).is_err());
         assert!(normalize_url("https://example.test/cal?token=x", false).is_err());
         let xml = r#"<d:multistatus xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav"><d:response><d:href>/cal/</d:href><d:propstat><d:prop><d:resourcetype><c:calendar/></d:resourcetype></d:prop><d:status>HTTP/1.1 404 Not Found</d:status></d:propstat></d:response></d:multistatus>"#;
-        assert!(!parse_dav(xml).unwrap()[0].calendar);
+        assert!(!parse_dav(xml).unwrap().entries[0].calendar);
         assert!(parse_dav("<!DOCTYPE evil><d:multistatus/>").is_err());
     }
 
@@ -414,5 +701,63 @@ mod tests {
         assert_eq!(calendars[0].account_id, "a");
         assert_eq!(calendars[0].name, "测试日历");
         assert_eq!(calendars[0].color, "#d65c4f");
+    }
+
+    #[test]
+    fn pull_materializes_sync_collection_with_multiget() {
+        let server = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = server.local_addr().unwrap().port();
+        let thread = std::thread::spawn(move || {
+            for step in 0..2 {
+                let (mut stream, _) = server.accept().unwrap();
+                let mut request = [0u8; 8192];
+                let size = stream.read(&mut request).unwrap();
+                assert!(String::from_utf8_lossy(&request[..size]).starts_with("REPORT /cal/"));
+                let xml = if step == 0 {
+                    "<d:multistatus xmlns:d=\"DAV:\"><d:response><d:href>/cal/one.ics</d:href><d:propstat><d:prop><d:getetag>\"v1\"</d:getetag></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response><d:sync-token>token-1</d:sync-token></d:multistatus>"
+                } else {
+                    "<d:multistatus xmlns:d=\"DAV:\" xmlns:c=\"urn:ietf:params:xml:ns:caldav\"><d:response><d:href>/cal/one.ics</d:href><d:propstat><d:prop><d:getetag>\"v1\"</d:getetag><c:calendar-data>BEGIN:VCALENDAR\r\nEND:VCALENDAR</c:calendar-data></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"
+                };
+                let response = format!(
+                    "HTTP/1.1 207 Multi-Status\r\nContent-Type: application/xml\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    xml.len(),
+                    xml
+                );
+                stream.write_all(response.as_bytes()).unwrap();
+            }
+        });
+        let base = format!("http://127.0.0.1:{port}/cal/");
+        let input = AccountInput {
+            id: None,
+            name: "测试".into(),
+            url: base.clone(),
+            username: "u".into(),
+            password: None,
+            allow_http: true,
+            paused: false,
+        };
+        let client = DavClient::new(&input, Zeroizing::new("p".into())).unwrap();
+        let calendar = Calendar {
+            id: "c".into(),
+            account_id: "a".into(),
+            url: base,
+            name: "日历".into(),
+            color: "#123456".into(),
+            visible: true,
+            read_only: false,
+        };
+        let result = tauri::async_runtime::block_on(client.pull(&calendar, None)).unwrap();
+        thread.join().unwrap();
+        assert!(result.full);
+        assert_eq!(result.token.as_deref(), Some("token-1"));
+        assert_eq!(result.objects.len(), 1);
+        assert!(
+            result.objects[0]
+                .ics
+                .as_deref()
+                .unwrap()
+                .contains("BEGIN:VCALENDAR")
+        );
+        assert_eq!(result.objects[0].etag.as_deref(), Some("\"v1\""));
     }
 }

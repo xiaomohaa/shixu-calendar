@@ -1,8 +1,9 @@
-use crate::dav::{AccountInput, Calendar};
+use crate::dav::{AccountInput, Calendar, Pull};
 use rusqlite::{Connection, OpenFlags, OptionalExtension, backup::Backup};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::path::Path;
+use std::{collections::HashSet, path::Path};
+use uuid::Uuid;
 
 const SCHEMA_VERSION: i64 = 1;
 
@@ -11,9 +12,29 @@ pub struct Store {
 }
 
 pub struct StoredAccount {
+    pub id: String,
     pub url: String,
     pub username: String,
     pub password: String,
+    pub allow_http: bool,
+    pub paused: bool,
+}
+
+struct LocalResource {
+    id: String,
+    ics: String,
+    etag: Option<String>,
+    dirty: bool,
+}
+
+pub struct PendingOperation {
+    pub id: String,
+    pub resource_id: String,
+    pub url: String,
+    pub ics: String,
+    pub kind: String,
+    pub base_etag: Option<String>,
+    pub version: i64,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -236,6 +257,262 @@ impl Store {
         }))
     }
 
+    pub fn event_resource(&self, id: &str) -> Result<Value, String> {
+        self.db.query_row("SELECT id,calendarId,url,etag,ics,dirty,deleted FROM event_resources WHERE id=?", [id], |row| Ok(json!({
+            "id": row.get::<_, String>(0)?, "calendarId": row.get::<_, String>(1)?,
+            "url": row.get::<_, String>(2)?, "etag": row.get::<_, Option<String>>(3)?,
+            "ics": row.get::<_, String>(4)?, "dirty": row.get::<_, i64>(5)?, "deleted": row.get::<_, i64>(6)?
+        }))).optional().map_err(|_| "读取日程失败".to_owned())?.ok_or("日程已移除，请刷新".into())
+    }
+
+    pub fn queue_event(
+        &mut self,
+        calendar_id: &str,
+        resource_id: Option<&str>,
+        expected_ics: Option<&str>,
+        ics: &str,
+        delete: bool,
+    ) -> Result<(), String> {
+        if calendar_id.is_empty()
+            || calendar_id.len() > 200
+            || ics.len() > 32 * 1024 * 1024
+            || !ics.starts_with("BEGIN:VCALENDAR")
+        {
+            return Err("日程参数无效".into());
+        }
+        let tx = self.db.transaction().map_err(|_| "无法开始日程保存事务")?;
+        let calendar: Option<(String, bool)> = tx
+            .query_row(
+                "SELECT url,readOnly FROM calendars WHERE id=?",
+                [calendar_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|_| "读取日历失败")?;
+        let (calendar_url, read_only) = calendar.ok_or("请选择有效日历")?;
+        if read_only {
+            return Err("此日历为只读，无法修改".into());
+        }
+        let (id, url, etag, old_ics) = if let Some(id) = resource_id {
+            let existing: Option<(String, String, Option<String>, String, bool)> = tx
+                .query_row(
+                    "SELECT calendarId,url,etag,ics,deleted FROM event_resources WHERE id=?",
+                    [id],
+                    |row| {
+                        Ok((
+                            row.get(0)?,
+                            row.get(1)?,
+                            row.get(2)?,
+                            row.get(3)?,
+                            row.get(4)?,
+                        ))
+                    },
+                )
+                .optional()
+                .map_err(|_| "读取原日程失败")?;
+            let (existing_calendar, url, etag, old, deleted) =
+                existing.ok_or("日程已移除，请刷新")?;
+            if existing_calendar != calendar_id {
+                return Err("现有日程暂不支持跨日历移动，请新建副本".into());
+            }
+            if deleted {
+                return Err("此日程已标记删除，请先同步或处理冲突".into());
+            }
+            if expected_ics != Some(old.as_str()) {
+                return Err("日程已在后台更新，请刷新后重试".into());
+            }
+            (id.to_owned(), url, etag, old)
+        } else {
+            if delete {
+                return Err("找不到此日程".into());
+            }
+            let id = Uuid::new_v4().to_string();
+            let url = format!("{}/{}.ics", calendar_url.trim_end_matches('/'), id);
+            (id, url, None, String::new())
+        };
+        tx.execute("INSERT INTO event_resources(id,calendarId,url,etag,ics,dirty,deleted) VALUES(?,?,?,?,?,1,?)
+            ON CONFLICT(id) DO UPDATE SET ics=excluded.ics,dirty=1,deleted=excluded.deleted",
+            rusqlite::params![id, calendar_id, url, etag, if delete { old_ics.as_str() } else { ics }, delete])
+            .map_err(|_| "保存本地日程失败")?;
+        tx.execute(
+            "INSERT INTO pending_operations(id,resourceId,kind,baseEtag) VALUES(?,?,?,?)
+            ON CONFLICT(resourceId) DO UPDATE SET kind=excluded.kind,version=version+1,error=NULL",
+            rusqlite::params![
+                Uuid::new_v4().to_string(),
+                id,
+                if delete { "delete" } else { "put" },
+                etag
+            ],
+        )
+        .map_err(|_| "加入离线同步队列失败")?;
+        tx.execute(
+            "UPDATE conflicts SET localIcs=? WHERE resourceId=?",
+            rusqlite::params![if delete { old_ics.as_str() } else { ics }, id],
+        )
+        .map_err(|_| "更新冲突本地版本失败")?;
+        tx.commit().map_err(|_| "提交日程保存事务失败".into())
+    }
+
+    pub fn delete_account(&mut self, id: &str) -> Result<(), String> {
+        let tx = self.db.transaction().map_err(|_| "无法开始账户删除事务")?;
+        let changed = tx
+            .execute("DELETE FROM accounts WHERE id=?", [id])
+            .map_err(|_| "删除账户失败")?;
+        if changed == 0 {
+            return Err("账户不存在".into());
+        }
+        let saved: Option<String> = tx
+            .query_row(
+                "SELECT value FROM settings WHERE key='preferences'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|_| "读取偏好失败")?;
+        if let Some(saved) = saved {
+            let mut settings: Value = serde_json::from_str(&saved).map_err(|_| "已保存偏好无效")?;
+            if let Some(default_id) = settings
+                .get("defaultCalendar")
+                .and_then(Value::as_str)
+                .map(str::to_owned)
+            {
+                if !default_id.is_empty() {
+                    let exists: Option<i64> = tx
+                        .query_row("SELECT 1 FROM calendars WHERE id=?", [&default_id], |row| {
+                            row.get(0)
+                        })
+                        .optional()
+                        .map_err(|_| "读取默认日历失败")?;
+                    if exists.is_none() {
+                        settings["defaultCalendar"] = json!("");
+                        tx.execute(
+                            "UPDATE settings SET value=? WHERE key='preferences'",
+                            [settings.to_string()],
+                        )
+                        .map_err(|_| "更新默认日历失败")?;
+                    }
+                }
+            }
+        }
+        tx.commit().map_err(|_| "提交账户删除事务失败".into())
+    }
+
+    pub fn clear_cache(&mut self) -> Result<(), String> {
+        let tx = self.db.transaction().map_err(|_| "无法开始缓存清理事务")?;
+        tx.execute_batch("DELETE FROM event_resources WHERE dirty=0 AND id NOT IN (SELECT resourceId FROM conflicts);
+            DELETE FROM sync_state; DELETE FROM reminders;")
+            .map_err(|_| "清除缓存失败")?;
+        tx.commit().map_err(|_| "提交缓存清理事务失败".into())
+    }
+
+    pub fn resolve_conflict(
+        &mut self,
+        id: &str,
+        choice: &str,
+        copy_ics: Option<&str>,
+    ) -> Result<(), String> {
+        if !matches!(choice, "local" | "remote" | "both") {
+            return Err("冲突处理选项无效".into());
+        }
+        let tx = self.db.transaction().map_err(|_| "无法开始冲突处理事务")?;
+        let conflict: Option<(String, String, Option<String>, Option<String>)> = tx
+            .query_row(
+                "SELECT resourceId,localIcs,remoteIcs,remoteEtag FROM conflicts WHERE id=?",
+                [id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .optional()
+            .map_err(|_| "读取冲突失败")?;
+        let (resource_id, local_ics, remote_ics, remote_etag) = conflict.ok_or("冲突已处理")?;
+        let resource: (String, String) = tx
+            .query_row(
+                "SELECT calendarId,url FROM event_resources WHERE id=?",
+                [&resource_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|_| "冲突资源不存在")?;
+        let kind: Option<String> = tx
+            .query_row(
+                "SELECT kind FROM pending_operations WHERE resourceId=?",
+                [&resource_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|_| "读取待提交操作失败")?;
+        if choice == "both" {
+            let ics = copy_ics.ok_or("缺少本地副本")?;
+            if ics.len() > 32 * 1024 * 1024
+                || !ics.starts_with("BEGIN:VCALENDAR")
+                || ics == local_ics
+            {
+                return Err("本地副本无效".into());
+            }
+            let calendar: (String, bool) = tx
+                .query_row(
+                    "SELECT url,readOnly FROM calendars WHERE id=?",
+                    [&resource.0],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .map_err(|_| "日历不存在")?;
+            if calendar.1 {
+                return Err("日历当前为只读，无法保留本地副本".into());
+            }
+            let new_id = Uuid::new_v4().to_string();
+            let url = format!("{}/{}.ics", calendar.0.trim_end_matches('/'), new_id);
+            tx.execute("INSERT INTO event_resources(id,calendarId,url,etag,ics,dirty,deleted) VALUES(?,?,?,NULL,?,1,0)",
+                rusqlite::params![new_id,resource.0,url,ics]).map_err(|_| "保存本地副本失败")?;
+            tx.execute("INSERT INTO pending_operations(id,resourceId,kind,baseEtag) VALUES(?,?,'put',NULL)",
+                rusqlite::params![Uuid::new_v4().to_string(),new_id]).map_err(|_| "加入副本同步队列失败")?;
+        }
+        if choice == "local" && remote_ics.is_some() && remote_etag.is_none() {
+            return Err("服务器未提供 ETag，无法安全覆盖；请选择保留双方或使用服务器版本".into());
+        }
+        tx.execute("DELETE FROM conflicts WHERE id=?", [id])
+            .map_err(|_| "移除冲突失败")?;
+        tx.execute(
+            "DELETE FROM pending_operations WHERE resourceId=?",
+            [&resource_id],
+        )
+        .map_err(|_| "清除旧待提交操作失败")?;
+        if choice == "local" {
+            if kind.as_deref() == Some("delete") && remote_ics.is_none() {
+                tx.execute("DELETE FROM event_resources WHERE id=?", [&resource_id])
+                    .map_err(|_| "清除已删除日程失败")?;
+            } else {
+                tx.execute(
+                    "UPDATE event_resources SET etag=?,ics=?,dirty=1,deleted=? WHERE id=?",
+                    rusqlite::params![
+                        remote_etag,
+                        local_ics,
+                        kind.as_deref() == Some("delete"),
+                        resource_id
+                    ],
+                )
+                .map_err(|_| "保留本地日程失败")?;
+                tx.execute(
+                    "INSERT INTO pending_operations(id,resourceId,kind,baseEtag) VALUES(?,?,?,?)",
+                    rusqlite::params![
+                        Uuid::new_v4().to_string(),
+                        resource_id,
+                        kind.as_deref().unwrap_or("put"),
+                        remote_etag
+                    ],
+                )
+                .map_err(|_| "重新加入同步队列失败")?;
+            }
+        } else if let Some(ics) = remote_ics {
+            tx.execute(
+                "UPDATE event_resources SET ics=?,etag=?,dirty=0,deleted=0 WHERE id=?",
+                rusqlite::params![ics, remote_etag, resource_id],
+            )
+            .map_err(|_| "采用服务器版本失败")?;
+        } else {
+            tx.execute("DELETE FROM event_resources WHERE id=?", [&resource_id])
+                .map_err(|_| "清除远端已删日程失败")?;
+        }
+        tx.commit().map_err(|_| "提交冲突处理事务失败".into())
+    }
+
     pub fn set_calendar(&self, id: &str, visible: bool, color: &str) -> Result<(), String> {
         if id.is_empty()
             || id.len() > 200
@@ -261,18 +538,275 @@ impl Store {
     pub fn account(&self, id: &str) -> Result<Option<StoredAccount>, String> {
         self.db
             .query_row(
-                "SELECT url,username,password FROM accounts WHERE id=?",
+                "SELECT id,url,username,password,allowHttp,paused FROM accounts WHERE id=?",
                 [id],
                 |row| {
                     Ok(StoredAccount {
-                        url: row.get(0)?,
-                        username: row.get(1)?,
-                        password: row.get(2)?,
+                        id: row.get(0)?,
+                        url: row.get(1)?,
+                        username: row.get(2)?,
+                        password: row.get(3)?,
+                        allow_http: row.get(4)?,
+                        paused: row.get(5)?,
                     })
                 },
             )
             .optional()
             .map_err(|_| "读取账户失败".into())
+    }
+
+    pub fn account_ids(&self) -> Result<Vec<String>, String> {
+        self.db
+            .prepare("SELECT id FROM accounts WHERE paused=0")
+            .and_then(|mut statement| statement.query_map([], |row| row.get(0))?.collect())
+            .map_err(|_| "读取账户列表失败".into())
+    }
+
+    pub fn sync_calendars(
+        &mut self,
+        account_id: &str,
+        discovered: &[Calendar],
+    ) -> Result<Vec<Calendar>, String> {
+        let tx = self.db.transaction().map_err(|_| "无法开始日历列表事务")?;
+        let mut output = Vec::new();
+        for calendar in discovered {
+            tx.execute("INSERT INTO calendars(id,accountId,url,name,color,readOnly) VALUES(?,?,?,?,?,?)
+                ON CONFLICT(accountId,url) DO UPDATE SET name=excluded.name,readOnly=excluded.readOnly",
+                rusqlite::params![calendar.id, account_id, calendar.url, calendar.name, calendar.color, calendar.read_only])
+                .map_err(|_| "保存日历列表失败")?;
+            let (id, color, visible): (String, String, bool) = tx
+                .query_row(
+                    "SELECT id,color,visible FROM calendars WHERE accountId=? AND url=?",
+                    rusqlite::params![account_id, calendar.url],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                )
+                .map_err(|_| "读取日历列表失败")?;
+            let mut current = calendar.clone();
+            current.id = id;
+            current.color = color;
+            current.visible = visible;
+            output.push(current);
+        }
+        tx.commit().map_err(|_| "提交日历列表事务失败")?;
+        Ok(output)
+    }
+
+    pub fn sync_token(&self, calendar_id: &str) -> Result<Option<String>, String> {
+        self.db
+            .query_row(
+                "SELECT token FROM sync_state WHERE calendarId=?",
+                [calendar_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map(|token| token.flatten())
+            .map_err(|_| "读取同步令牌失败".into())
+    }
+
+    pub fn pending_operations(&self, calendar_id: &str) -> Result<Vec<PendingOperation>, String> {
+        self.db
+            .prepare(
+                "SELECT p.id,p.resourceId,r.url,r.ics,p.kind,p.baseEtag,p.version
+            FROM pending_operations p JOIN event_resources r ON r.id=p.resourceId
+            LEFT JOIN conflicts c ON c.resourceId=r.id WHERE r.calendarId=? AND c.id IS NULL",
+            )
+            .and_then(|mut statement| {
+                statement
+                    .query_map([calendar_id], |row| {
+                        Ok(PendingOperation {
+                            id: row.get(0)?,
+                            resource_id: row.get(1)?,
+                            url: row.get(2)?,
+                            ics: row.get(3)?,
+                            kind: row.get(4)?,
+                            base_etag: row.get(5)?,
+                            version: row.get(6)?,
+                        })
+                    })?
+                    .collect()
+            })
+            .map_err(|_| "读取待提交操作失败".into())
+    }
+
+    pub fn complete_operation(
+        &mut self,
+        op: &PendingOperation,
+        next_etag: Option<&str>,
+    ) -> Result<(), String> {
+        let tx = self.db.transaction().map_err(|_| "无法开始操作提交事务")?;
+        let version: Option<i64> = tx
+            .query_row(
+                "SELECT version FROM pending_operations WHERE id=?",
+                [&op.id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|_| "读取操作版本失败")?;
+        match version {
+            Some(version) if version == op.version => {
+                tx.execute("DELETE FROM pending_operations WHERE id=?", [&op.id])
+                    .map_err(|_| "移除已提交操作失败")?;
+                if op.kind == "delete" {
+                    tx.execute("DELETE FROM event_resources WHERE id=?", [&op.resource_id])
+                        .map_err(|_| "移除已删除日程失败")?;
+                } else {
+                    tx.execute(
+                        "UPDATE event_resources SET etag=?,dirty=0 WHERE id=?",
+                        rusqlite::params![next_etag, op.resource_id],
+                    )
+                    .map_err(|_| "保存远端版本失败")?;
+                }
+            }
+            Some(_) => {
+                tx.execute(
+                    "UPDATE pending_operations SET baseEtag=? WHERE id=?",
+                    rusqlite::params![next_etag, op.id],
+                )
+                .map_err(|_| "更新待提交版本失败")?;
+                tx.execute(
+                    "UPDATE event_resources SET etag=? WHERE id=?",
+                    rusqlite::params![next_etag, op.resource_id],
+                )
+                .map_err(|_| "更新日程版本失败")?;
+            }
+            None => {}
+        }
+        tx.commit().map_err(|_| "提交操作事务失败".into())
+    }
+
+    pub fn fail_operation(&self, id: &str, error: &str) -> Result<(), String> {
+        self.db
+            .execute(
+                "UPDATE pending_operations SET attempts=attempts+1,error=? WHERE id=?",
+                rusqlite::params![error, id],
+            )
+            .map_err(|_| "记录提交错误失败")?;
+        Ok(())
+    }
+
+    pub fn conflict_operation(
+        &self,
+        op: &PendingOperation,
+        remote_ics: Option<&str>,
+        remote_etag: Option<&str>,
+    ) -> Result<(), String> {
+        self.db.execute("INSERT INTO conflicts(id,resourceId,localIcs,remoteIcs,remoteEtag,createdAt) VALUES(?,?,?,?,?,?)
+            ON CONFLICT(resourceId) DO UPDATE SET localIcs=excluded.localIcs,remoteIcs=excluded.remoteIcs,remoteEtag=excluded.remoteEtag",
+            rusqlite::params![Uuid::new_v4().to_string(), op.resource_id, op.ics, remote_ics, remote_etag, chrono::Utc::now().to_rfc3339()])
+            .map_err(|_| "保存冲突失败")?;
+        Ok(())
+    }
+
+    pub fn set_account_error(&self, id: &str, error: Option<&str>) -> Result<(), String> {
+        self.db
+            .execute(
+                "UPDATE accounts SET error=? WHERE id=?",
+                rusqlite::params![error, id],
+            )
+            .map_err(|_| "保存账户状态失败")?;
+        Ok(())
+    }
+
+    pub fn finish_account_sync(&self, id: &str) -> Result<(), String> {
+        self.db
+            .execute(
+                "UPDATE accounts SET lastSync=?,error=NULL WHERE id=?",
+                rusqlite::params![chrono::Utc::now().to_rfc3339(), id],
+            )
+            .map_err(|_| "保存同步时间失败")?;
+        Ok(())
+    }
+
+    pub fn apply_pull(&mut self, calendar_id: &str, pull: Pull) -> Result<(), String> {
+        let tx = self.db.transaction().map_err(|_| "无法开始日程缓存事务")?;
+        let seen: HashSet<&str> = pull
+            .objects
+            .iter()
+            .filter(|r| !r.deleted)
+            .map(|r| r.url.as_str())
+            .collect();
+        for remote in &pull.objects {
+            let local: Option<LocalResource> = tx
+                .query_row(
+                    "SELECT id,ics,etag,dirty FROM event_resources WHERE calendarId=? AND url=?",
+                    rusqlite::params![calendar_id, remote.url],
+                    |row| {
+                        Ok(LocalResource {
+                            id: row.get(0)?,
+                            ics: row.get(1)?,
+                            etag: row.get(2)?,
+                            dirty: row.get(3)?,
+                        })
+                    },
+                )
+                .optional()
+                .map_err(|_| "读取本地日程失败")?;
+            if let Some(local) = &local {
+                if local.dirty {
+                    if local.etag != remote.etag {
+                        tx.execute("INSERT INTO conflicts(id,resourceId,localIcs,remoteIcs,remoteEtag,createdAt) VALUES(?,?,?,?,?,?)
+                            ON CONFLICT(resourceId) DO UPDATE SET localIcs=excluded.localIcs,remoteIcs=excluded.remoteIcs,remoteEtag=excluded.remoteEtag",
+                            rusqlite::params![Uuid::new_v4().to_string(), local.id, local.ics, remote.ics, remote.etag, chrono::Utc::now().to_rfc3339()])
+                            .map_err(|_| "保存冲突失败")?;
+                    }
+                    continue;
+                }
+            }
+            if remote.deleted {
+                if let Some(local) = &local {
+                    tx.execute("DELETE FROM event_resources WHERE id=?", [&local.id])
+                        .map_err(|_| "删除过期缓存失败")?;
+                }
+                continue;
+            }
+            let ics = remote
+                .ics
+                .as_deref()
+                .ok_or("远程日程数据为空，已取消缓存事务")?;
+            tx.execute("INSERT INTO event_resources(id,calendarId,url,etag,ics,dirty,deleted) VALUES(?,?,?,?,?,0,0)
+                ON CONFLICT(calendarId,url) DO UPDATE SET etag=excluded.etag,ics=excluded.ics,dirty=0,deleted=0",
+                rusqlite::params![local.map(|r| r.id).unwrap_or_else(|| Uuid::new_v4().to_string()), calendar_id, remote.url, remote.etag, ics])
+                .map_err(|_| "保存远端日程失败")?;
+        }
+        if pull.full {
+            let locals: Vec<(String, String, String, Option<String>, bool)> = tx
+                .prepare("SELECT id,url,ics,etag,dirty FROM event_resources WHERE calendarId=?")
+                .and_then(|mut statement| {
+                    statement
+                        .query_map([calendar_id], |row| {
+                            Ok((
+                                row.get(0)?,
+                                row.get(1)?,
+                                row.get(2)?,
+                                row.get(3)?,
+                                row.get(4)?,
+                            ))
+                        })?
+                        .collect()
+                })
+                .map_err(|_| "读取本地日程失败")?;
+            for (id, url, ics, etag, dirty) in locals {
+                if seen.contains(url.as_str()) {
+                    continue;
+                }
+                if !dirty {
+                    tx.execute("DELETE FROM event_resources WHERE id=?", [&id])
+                        .map_err(|_| "清理过期缓存失败")?;
+                } else if etag.is_some() {
+                    tx.execute("INSERT INTO conflicts(id,resourceId,localIcs,remoteIcs,remoteEtag,createdAt) VALUES(?,?,?,NULL,NULL,?)
+                        ON CONFLICT(resourceId) DO UPDATE SET localIcs=excluded.localIcs,remoteIcs=NULL,remoteEtag=NULL",
+                        rusqlite::params![Uuid::new_v4().to_string(), id, ics, chrono::Utc::now().to_rfc3339()])
+                        .map_err(|_| "保存远端删除冲突失败")?;
+                }
+            }
+        }
+        tx.execute(
+            "INSERT INTO sync_state(calendarId,token,lastSync) VALUES(?,?,?)
+            ON CONFLICT(calendarId) DO UPDATE SET token=excluded.token,lastSync=excluded.lastSync",
+            rusqlite::params![calendar_id, pull.token, chrono::Utc::now().to_rfc3339()],
+        )
+        .map_err(|_| "保存同步令牌失败")?;
+        tx.commit().map_err(|_| "提交日程缓存事务失败".into())
     }
 
     pub fn save_account(

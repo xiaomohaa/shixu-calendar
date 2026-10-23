@@ -1,9 +1,10 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import type { Api, Result, Snapshot } from '../shared/contracts';
-import { defaultSettings } from '../shared/contracts';
+import type { Api, EventInput, Result, Snapshot } from '../shared/contracts';
+import { defaultSettings, eventInput } from '../shared/contracts';
 import type { DesktopState, UpdateState } from '../shared/updates';
 import { expandInWorker } from './icsWorker';
+import { editInWorker } from './editWorker';
 import type { Resource } from '../database/store';
 
 declare global { interface Window { __TAURI_INTERNALS__?: unknown } }
@@ -41,17 +42,39 @@ if (window.__TAURI_INTERNALS__) {
       diagnostics = result.diagnostics;
       return result.events;
     },
-    eventDetail: (id, scope, rid) => call('eventDetail', id, scope, rid),
+    eventDetail: async (id, scope, rid) => {
+      const [resource, snapshot] = await Promise.all([call<Resource>('eventResource', id), call<Snapshot>('snapshot', defaultSettings)]);
+      return editInWorker<EventInput>({ kind: 'detail', resource, scope, recurrenceId: rid, timezone: snapshot.settings.timezone });
+    },
     testAccount: input => call('testAccount', input),
     saveAccount: input => call('saveAccount', input),
     deleteAccount: id => call('deleteAccount', id),
     sync: id => call('sync', id),
     cancelSync: () => call('cancelSync'),
-    saveEvent: input => call('saveEvent', input),
-    deleteEvent: (id, scope, rid) => call('deleteEvent', id, scope, rid),
+    saveEvent: async raw => {
+      const input = eventInput.parse(raw);
+      const existing = input.resourceId ? await call<Resource>('eventResource', input.resourceId) : undefined;
+      const ics = await editInWorker<string>({ kind: 'edit', input, original: existing?.ics });
+      await call('queueEvent', input.calendarId, existing?.id ?? null, existing?.ics ?? null, ics, false);
+    },
+    deleteEvent: async (id, scope, rid) => {
+      const resource = await call<Resource>('eventResource', id);
+      if (scope === 'instance') {
+        if (!rid) throw new Error('请选择重复实例');
+        const ics = await editInWorker<string>({ kind: 'exclude', ics: resource.ics, recurrenceId: rid });
+        await call('queueEvent', resource.calendarId, resource.id, resource.ics, ics, false);
+      } else {
+        await call('queueEvent', resource.calendarId, resource.id, resource.ics, resource.ics, true);
+      }
+    },
     setCalendar: (id, visible, color) => call('setCalendar', id, visible, color),
     settings: input => call('settings', input),
-    resolveConflict: (id, choice) => call('resolveConflict', id, choice),
+    resolveConflict: async (id, choice) => {
+      const conflict = (await call<Snapshot>('snapshot', defaultSettings)).conflicts.find(item => item.id === id);
+      if (!conflict) throw new Error('冲突已处理');
+      const copy = choice === 'both' ? await editInWorker<string>({ kind: 'copy', ics: conflict.localIcs }) : null;
+      await call('resolveConflict', id, choice, copy);
+    },
     clearCache: () => call('clearCache'),
     backup: () => call('backup'),
     restore: () => call('restore'),
