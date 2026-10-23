@@ -1,6 +1,6 @@
 [package]
 name = "shixu_tauri_probe"
-version = "0.1.0"
+version = "2.0.0-alpha.1"
 description = "时序日历 Tauri Windows 可行性测试"
 authors = ["Shixu Calendar"]
 license = "MIT"
@@ -23,3 +23,7 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.12.5", features = [] }
 tauri-plugin-log = "2"
+rusqlite = { version = "=0.40.2", features = ["bundled", "backup"] }
+
+[dev-dependencies]
+tempfile = "3.27.0"

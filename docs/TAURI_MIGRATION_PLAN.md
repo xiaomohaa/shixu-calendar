@@ -14,7 +14,7 @@
 | 现有稳定版 | [Electron 1.3.0](https://github.com/xiaomohaa/shixu-calendar/releases/tag/v1.3.0) |
 | 目标平台 | 首先完成 Windows 10/11 x64；本轮不扩展其他平台 |
 | 推荐技术方向 | Tauri 2 + 现有 React/Vite/TypeScript 界面 + Rust 原生后台 |
-| 本轮目标 | 显著减小安装包，保留现有功能和数据完整性 |
+| 本轮目标 | 将全部现有功能移植为 Tauri 2.0.0，显著减小安装包并保留数据完整性 |
 | 明确不做 | 天气、新一轮 UI 重设计、会议邀请/OAuth 等原先未支持的功能 |
 
 下一台电脑先完成第 3 节，再按第 7 节的 M0 顺序推进。先证明原生构建、关键依赖和数据兼容可行，再批量迁移。
@@ -272,6 +272,8 @@ M0 先验证困难点，避免只把 UI 搬到空壳就宣布完成。正式网�
 - Node.js `v24.11.1`、npm `11.6.2`；检测到 WebView2 `155.0.4283.62`。通过 winget 安装 Rustup，已核对 `rustc 1.99.1`、`cargo 1.99.1`、`stable-x86_64-pc-windows-msvc`。
 - Visual Studio C++ Build Tools 安装器返回退出码 1。`vswhere -all` 显示已有 BuildTools 实例处于不完整、不可启动状态（`state=13`、`isComplete=false`），未找到 `cl.exe`；Windows SDK 库目录也未找到。需先修复本机安装，再进行 Tauri 原生编译；目前未声称 Tauri 构建成功。
 - 随后用户完成 C++ Build Tools 安装；本机识别到 MSVC `14.44.35207` 和 Windows SDK `10.0.26100.0`。新增隔离 identifier `cn.shixu.calendar.tauri.dev` 的最小 Tauri 2 测试项目，Cargo 锁定 412 个依赖包；使用 `npx tauri build` 完成 release 构建。原生测试 EXE `8,877,056` 字节，NSIS 安装包 `1,920,848` 字节。实际启动后窗口标题为“时序日历 Tauri 可行性测试”。它使用独立的测试页面，没有携带现有字体或业务功能，只证明工具链、WebView2 和打包链路可用，不能作为日历迁移完成或 30–50 MB 目标的实测值。
+- 用户明确要求完整功能作为新的 **2.0.0** 版本。Tauri 开发包版本先标记 `2.0.0-alpha.1`，沿用隔离 identifier；旧 Electron 1.3.0 的根 `package.json` 版本和稳定发布不动。正式功能验收后再改为 2.0.0。
+- Rust SQLite 存储层已按旧 schema v1 建表，并用 SQLite backup API 从只读旧库复制到隔离目录。合成测试确认原始 ICS、密码密文、待同步操作和冲突记录完整，源库不变。这是 M2 的起点，尚未接入完整业务 API，也未试真实用户数据。
 - `npm ci` 成功；`npm run typecheck` 成功；`npm run build` 成功。构建输出的四个字体文件约 37.1 MB，后续 Tauri 包体积统计仍需单独实测。
 - `npm test` 首次在受限沙箱内有 12 项因 `connect EACCES 127.0.0.1` 失败；允许本机回环连接后重跑，60/60 通过。这是测试环境网络权限所致，未修改协议代码。
 - `npm run smoke` 在允许窗口与本机回环连接的环境中通过 34 项，包括实际 DAV 请求、加密凭据、托盘收纳、字体和四视图。报告由脚本生成在既有验证位置；结果仅代表 Electron 基线。
