@@ -1,0 +1,24 @@
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+const require = createRequire(import.meta.url), yaml = require('js-yaml');
+const pkg = JSON.parse(readFileSync('package.json','utf8')), version = pkg.version, tag = `v${version}`;
+const gh = process.platform === 'win32' && existsSync('C:/Program Files/GitHub CLI/gh.exe') ? 'C:/Program Files/GitHub CLI/gh.exe' : 'gh';
+const run = (exe,args) => execFileSync(exe,args,{encoding:'utf8',stdio:['ignore','pipe','inherit']}).trim();
+const installer=`Shixu-Setup-${version}-x64.exe`, portable=`Shixu-Portable-${version}-x64.exe`;
+const assets=[installer,portable,`${installer}.blockmap`,'latest.yml'];
+const notes=`docs/RELEASE_NOTES_${version}.md`;
+if(run('git',['status','--porcelain'])) throw new Error('请先提交工作区修改');
+if(run('git',['rev-parse',tag])!==run('git',['rev-parse','HEAD'])) throw new Error('版本标签必须指向当前提交');
+const metadata=yaml.load(readFileSync('release/latest.yml','utf8'));
+const file=metadata.files?.find(file=>file.url===installer);
+const digest=createHash('sha512').update(readFileSync(`release/${installer}`)).digest('base64');
+if(metadata.version!==version || !file || file.sha512!==digest || metadata.path!==installer) throw new Error('更新元数据版本或 SHA512 与安装包不匹配');
+const hashes=assets.map(name=>`${createHash('sha256').update(readFileSync(`release/${name}`)).digest('hex')}  ${name}`).join('\n')+'\n';
+writeFileSync('release/SHA256SUMS.txt',hashes);
+if(!existsSync(notes)) throw new Error(`缺少 ${notes}`);
+// Publish only after every updater asset has uploaded to a draft release.
+run(gh,['release','create',tag,...assets.map(name=>`release/${name}`),'release/SHA256SUMS.txt','--repo','xiaomohaa/shixu-calendar','--verify-tag','--draft','--title',`时序日历 ${version}`,'--notes-file',notes]);
+run(gh,['release','edit',tag,'--repo','xiaomohaa/shixu-calendar','--draft=false','--latest']);
+console.log(`https://github.com/xiaomohaa/shixu-calendar/releases/tag/${tag}`);

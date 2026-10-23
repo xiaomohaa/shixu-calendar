@@ -1,6 +1,6 @@
 {
   "name": "shixu-calendar",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "时序 · 私人的 CalDAV 桌面日历",
   "private": true,
   "type": "module",
@@ -13,9 +13,11 @@
     "test": "vitest run",
     "build": "npm run typecheck && vite build && node scripts/build-main.mjs",
     "start": "electron .",
-    "pack": "npm run build && electron-builder --win --x64",
-    "pack:dir": "npm run build && electron-builder --win --x64 --dir",
-    "smoke": "node scripts/smoke.mjs"
+    "pack": "npm run build && electron-builder --win --x64 --publish never",
+    "pack:dir": "npm run build && electron-builder --win --x64 --dir --publish never",
+    "smoke": "node scripts/smoke.mjs",
+    "test:updater": "node scripts/update-smoke.mjs",
+    "release:publish": "node scripts/publish.mjs"
   },
   "dependencies": {
     "@fullcalendar/core": "6.1.20",
@@ -25,6 +27,7 @@
     "@fullcalendar/luxon3": "6.1.20",
     "@fullcalendar/react": "6.1.20",
     "@fullcalendar/timegrid": "6.1.20",
+    "electron-updater": "6.8.9",
     "fast-xml-parser": "^5.3.0",
     "ical.js": "2.2.1",
     "lucide-react": "^0.577.0",
@@ -62,7 +65,8 @@
       "build/icon.png",
       "build/icon.ico",
       "package.json",
-      "THIRD_PARTY_NOTICES.md"
+      "THIRD_PARTY_NOTICES.md",
+      "fonts/NOTICE.md"
     ],
     "asar": true,
     "npmRebuild": false,
@@ -82,10 +86,19 @@
       "installerLanguages": [
         "zh_CN",
         "en_US"
-      ]
+      ],
+      "shortcutName": "时序日历",
+      "uninstallDisplayName": "时序日历"
     },
     "portable": {
       "artifactName": "Shixu-Portable-${version}-x64.${ext}"
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "xiaomohaa",
+        "repo": "shixu-calendar"
+      }
+    ]
   }
 }

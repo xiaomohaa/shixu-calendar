@@ -1,12 +1,14 @@
 {
   "date": "2026-10-23",
   "timezone": "Asia/Shanghai",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "electron": "45.0.0",
   "architecture": "x64",
-  "mainSha256": "1a52efec8b469b3a8b35312559fcbe06a0816b4ff685054fe748938c1b2f99ed",
-  "unitAndProtocolTests": 44,
-  "packagedElectronSmokeChecks": 26,
+  "mainSha256": "005cde94e82d4c58243f1d83179f6a2396de4a8c41e3545e0e1017278fd448c4",
+  "unitAndProtocolTests": 54,
+  "packagedElectronSmokeChecks": 34,
+  "updaterHttpChecks": 6,
+  "isolatedInstallUpdateChecks": 11,
   "asarVerified": true,
   "chineseHolidayYears": [
     2024,

@@ -33,7 +33,29 @@ async function openCalendarEvent(page, title) {
 }
 try {
   const page = await launch();
+  await page.evaluate(() => document.fonts.ready);
+  const fonts = await page.evaluate(() => [...document.fonts].filter(f => f.status === 'loaded').map(f => f.family));
+  check(fonts.includes('Shixu SF') && fonts.includes('Shixu PingFang'),'打包字体 SF Pro 与苹方实际加载，无需系统安装');
+  const cdp = await page.context().newCDPSession(page); await cdp.send('DOM.enable'); await cdp.send('CSS.enable');
+  const dom = await cdp.send('DOM.getDocument'); const heading = await cdp.send('DOM.querySelector',{nodeId:dom.root.nodeId,selector:'h1'});
+  const renderedFonts = (await cdp.send('CSS.getPlatformFontsForNode',{nodeId:heading.nodeId})).fonts;
+  check(renderedFonts.some(f => f.isCustomFont && /SF|San Francisco/i.test(f.familyName)) && renderedFonts.filter(f => f.isCustomFont).length === 2 && renderedFonts.reduce((n,f) => n+f.glyphCount,0)===8,'Chromium 实际使用内置英文字体和苹方渲染年月标题');
+  await cdp.detach();
   check((await page.evaluate(()=>window.shixu.snapshot())).accounts.length===0,'首次启动无演示账户或事件');
+  await app.evaluate(({BrowserWindow}) => BrowserWindow.getAllWindows()[0].close());
+  check(await app.evaluate(({BrowserWindow}) => { const w=BrowserWindow.getAllWindows()[0]; return !!w && !w.isVisible() && !w.isDestroyed(); }),'关闭按钮隐藏窗口到托盘，应用继续运行');
+  check((await page.evaluate(()=>window.shixu.snapshot())).accounts.length===0,'收纳到托盘后数据库与 IPC 继续可用');
+  await app.evaluate(({BrowserWindow}) => { const w=BrowserWindow.getAllWindows()[0];w.show();w.focus(); });
+  await page.getByRole('button',{name:'设置',exact:true}).click();
+  await page.getByRole('button',{name:'启动与后台',exact:true}).click();
+  check(await page.getByLabel('关闭窗口后收纳到系统托盘').isChecked(),'启动与后台默认关闭到托盘');
+  const desktop=await page.evaluate(()=>window.shixu.desktopState());
+  check(!desktop.openAtLogin,'未主动启用时不会添加开机自启');
+  await page.getByRole('button',{name:'关于与更新',exact:true}).click();
+  const updater=await page.evaluate(()=>window.shixu.updateState());
+  check((await page.locator('.version-heading').innerText()).includes(updater.currentVersion),'关于与更新显示真实主进程版本');
+  if(updater.mode==='unpacked' || updater.mode==='portable') check((await page.locator('.update-status').innerText()).includes('退出后替换应用文件'),'解压版和便携版明确提示手动替换更新');
+  await page.getByRole('button',{name:'关闭面板'}).click();
   const dateAlignment = await page.locator('.fc-daygrid-day').evaluateAll(cells => cells.map(cell => {
     const number = cell.querySelector('.solar-date'), lunar = cell.querySelector('.lunar-date');
     if (!number || !lunar) return 999;

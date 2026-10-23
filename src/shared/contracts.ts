@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { DesktopState, UpdateState } from './updates';
 
 export const accountInput = z.object({
   id: z.string().optional(), name: z.string().trim().min(1).max(100),
@@ -15,9 +16,10 @@ export const settingsSchema = z.object({
   reminder: z.number().int().min(-1).max(10080), timezone: z.string().min(1).max(100),
   autoSync: z.boolean(), interval: z.number().int().min(1).max(1440),
   defaultCalendar: z.string(), timeFormat: z.enum(['24', '12']), dateFormat: z.enum(['numeric', 'chinese']),
+  autoUpdateCheck: z.boolean().default(true), closeToTray: z.boolean().default(true),
 });
 export type Settings = z.infer<typeof settingsSchema>;
-export const defaultSettings: Settings = { theme: 'system', view: 'dayGridMonth', firstDay: 1, duration: 60, reminder: 15, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, autoSync: true, interval: 10, defaultCalendar: '', timeFormat: '24', dateFormat: 'chinese' };
+export const defaultSettings: Settings = { theme: 'system', view: 'dayGridMonth', firstDay: 1, duration: 60, reminder: 15, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, autoSync: true, interval: 10, defaultCalendar: '', timeFormat: '24', dateFormat: 'chinese', autoUpdateCheck: true, closeToTray: true };
 export const eventInput = z.object({
   resourceId: z.string().optional(), calendarId: z.string().min(1), uid: z.string().optional(),
   title: z.string().trim().min(1, '请输入日程标题').max(500), start: z.string().min(10), end: z.string().min(10),
@@ -32,6 +34,16 @@ export interface Conflict { id: string; resourceId: string; localIcs: string; re
 export interface Snapshot { accounts: Account[]; calendars: Calendar[]; settings: Settings; pending: number; conflicts: Conflict[]; syncing: string[]; bytes: number; resources: number; diagnostics: string[] }
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 export interface Api {
+  updateState(): Promise<UpdateState>;
+  checkForUpdates(): Promise<void>;
+  downloadUpdate(): Promise<void>;
+  cancelUpdateDownload(): Promise<void>;
+  installUpdate(): Promise<void>;
+  openReleasePage(): Promise<void>;
+  onUpdateChange(callback: (state: UpdateState) => void): () => void;
+  desktopState(): Promise<DesktopState>;
+  setAutoStart(enabled: boolean): Promise<DesktopState>;
+  quitApp(): Promise<void>;
   snapshot(): Promise<Snapshot>;
   events(start: string, end: string): Promise<CalendarEvent[]>;
   eventDetail(resourceId: string, scope: 'series' | 'instance', recurrenceId?: string): Promise<EventInput>;
@@ -49,5 +61,6 @@ export interface Api {
   backup(): Promise<boolean>;
   restore(): Promise<boolean>;
   onChange(callback: () => void): () => void;
+  onOpenSettings(callback: (tab: string) => void): () => void;
 }
 declare global { interface Window { shixu: Api } }

@@ -15,9 +15,10 @@
 | Lucide React 0.577.0 | ISC | https://lucide.dev/license |
 | SQLite（随 Electron/Node 提供） | Public Domain | https://www.sqlite.org/copyright.html |
 | lunar-typescript 1.8.6 | MIT | https://github.com/6tail/lunar-typescript |
+| electron-updater 6.8.9 | MIT | https://github.com/electron-userland/electron-builder |
 
 tsdav 使用实际安装版本的 davRequest、createObject、updateObject 和 deleteObject API。发现与同步实现补充同源凭据限制、流式读取上限、sync-token 与回退策略。ical.js 使用完整组件树修改。VTIMEZONE 的多值 RDATE 适配在本应用自己的解析层实现，不修改该库。
 
 ical.js 的原始源码按 MPL-2.0 提供：https://github.com/kewisch/ical.js/tree/v2.2.1 。相关许可文本随分发依赖保留在 app.asar/node_modules 中。Electron 的 Chromium、Node 和其他组件的许可见安装目录 LICENSE.electron.txt 与 LICENSES.chromium.html。
 
-本项目图标为本地矢量几何绘制，未使用 Apple 专有素材。字体使用 Windows 已安装的系统字体。构建工具为 Vite、TypeScript、esbuild、electron-builder；测试使用 Vitest 与 Playwright，均不作为运行时服务。
+本项目图标为本地矢量几何绘制。用户提供的 Apple SF Pro 和苹方文件保存在 fonts 目录，并在应用中加载；字体不适用项目的 MIT 许可，权利说明见 fonts/NOTICE.md。原始素材文件名与内部字重不同，界面按内部信息匹配字重。构建工具为 Vite、TypeScript、esbuild、electron-builder；测试使用 Vitest 与 Playwright，均不作为运行时服务。

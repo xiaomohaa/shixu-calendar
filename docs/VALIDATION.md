@@ -1,4 +1,14 @@
-# 第一版验证记录
+# 验证记录
+
+## 1.2.0 托盘、自启、字体与更新
+
+2026-10-23：54 项单元、协议、同步和更新状态测试通过。正式 EXE 的 34 项 Electron 检查通过，新增真实字体加载与 Chromium 自定义字体字形验证、关闭隐藏且 IPC/数据库仍可用、启动设置和真实版本显示，同时回归农历黄历、休班、日期居中和原有 DAV 全流程。
+
+独立 Electron 中使用真实 electron-updater 完成 6 项 HTTP 验证：发现下一版本、下载与 SHA512、进度事件、篡改拒绝、取消、取消后重试成功。再使用独立 appId、安装目录和数据执行真实 NSIS 1.2.0 → 1.2.1 升级，11 项检查通过，包括实际写入/移除 Windows 登录项、--hidden 隐藏到托盘、IPC 检查下载、真实 quitAndInstall、版本变化和账户/偏好/离线队列保留，升级后 DPAPI 解密与队列同步通过。为保证测试不接触正常数据，安装测试仅禁止安装器自动重启，改为显式携带测试数据目录重新启动；不声称已用测试数据自动重启到正常用户目录。
+
+自启测试发现 Electron 45 对带参数登录项的 openAtLogin 查询返回 false，但 launchItems 与实际注册表正确；当前通过匹配应用自己的用户级启动项读取开启和系统启用状态。未重启 Windows 做真实登录验证。系统通知是否物理弹出仍受系统设置限制。
+
+验证报告：electron-smoke-result.json、updater-smoke-result.json、install-update-smoke-result.json 与 build-info.json。打包校验比较全部 ASAR Renderer 资源、字体、main/preload 和本地最终构建，核验 x64、字体说明、更新源及 latest.yml 的安装包 SHA512。
 
 ## 1.1.0 日期居中与中国历法更新
 

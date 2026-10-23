@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, safeStorage, dialog, Menu, Notification, nativeTheme } from 'electron';
+import { app, BrowserWindow, ipcMain, safeStorage, dialog, Menu, Notification, nativeTheme, Tray, shell } from 'electron';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -10,6 +10,9 @@ import { AppError, errorMessage } from '../shared/errors';
 import { accountInput, eventInput, settingsSchema } from '../shared/contracts';
 import { DateTime } from 'luxon';
 import { getCACertificates, setDefaultCACertificates } from 'node:tls';
+import { appMode, desktopState, setAutoStart } from './desktop';
+import { createUpdates } from './updates';
+import { RELEASE_PAGE } from '../shared/updates';
 
 if (process.env.SHIXU_DATA_DIR) { mkdirSync(process.env.SHIXU_DATA_DIR, { recursive: true }); app.setPath('userData', process.env.SHIXU_DATA_DIR); }
 app.setName('时序日历');
@@ -17,6 +20,10 @@ app.setAppUserModelId('cn.shixu.calendar');
 let window: BrowserWindow | null = null;
 let store: Store, service: CalendarService;
 let shuttingDown = false;
+let shutdownComplete = false;
+let tray: Tray | null = null;
+let activeCalls = 0;
+const showWindow = () => { if (window?.isMinimized()) window.restore(); window?.show(); window?.focus(); };
 const changed = () => window?.webContents.send('shixu:changed');
 const idSchema = z.string().min(1).max(200);
 
@@ -28,20 +35,47 @@ async function main() {
   nativeTheme.themeSource = store.settings().theme;
   const vault = new Vault({ available: () => safeStorage.isAsyncEncryptionAvailable(), encrypt: text => safeStorage.encryptStringAsync(text), decrypt: async data => (await safeStorage.decryptStringAsync(data)).result });
   service = new CalendarService(store, vault, changed);
+  const waitForCalls = async () => { while (activeCalls) await new Promise(resolve => setTimeout(resolve, 30)); };
+  const prepareInstall = async () => { await service.syncEngine.cancel(); await waitForCalls(); await service.syncEngine.cancel(); };
+  const updates = createUpdates(app.getVersion(), appMode(), state => window?.webContents.send('shixu:update', state), prepareInstall);
   window = new BrowserWindow({ width: 1380, height: 900, minWidth: 1000, minHeight: 680, title: '时序日历', backgroundColor: '#f8f7f5', icon: join(__dirname, '../build/icon.ico'),
+    show: !(appMode() === 'installer' && process.argv.includes('--hidden')),
     webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false, sandbox: true, webSecurity: true, spellcheck: false } });
   Menu.setApplicationMenu(null);
+  tray = new Tray(join(__dirname, '../build/icon.ico'));
+  tray.setToolTip('时序日历');
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: '打开时序日历', click: showWindow },
+    { label: '检查更新', click: () => { showWindow(); window?.webContents.send('shixu:open-settings', 'updates'); void updates.check(); } },
+    { type: 'separator' }, { label: '退出时序日历', click: () => app.quit() },
+  ]));
+  tray.on('click', showWindow);
+  window.on('close', event => {
+    if (!shuttingDown && updates.state().phase !== 'installing' && store.settings().closeToTray && tray && !tray.isDestroyed()) { event.preventDefault(); window?.hide(); }
+  });
   window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   window.webContents.on('will-navigate', (event) => event.preventDefault());
   window.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   const devUrl = !app.isPackaged && process.env.VITE_DEV_SERVER_URL === 'http://127.0.0.1:5173' ? process.env.VITE_DEV_SERVER_URL : undefined;
   const trusted = (url: string) => devUrl ? url.startsWith(`${devUrl}/`) || url === devUrl : url === pathToFileURL(join(__dirname, '../dist/index.html')).href;
   ipcMain.handle('shixu:call', async (event, method: unknown, raw: unknown) => {
+    let counted = false;
     try {
       if (event.sender !== window?.webContents || event.senderFrame !== event.sender.mainFrame || !trusted(event.senderFrame.url)) throw new AppError('请求来源不受信任');
       const a = z.array(z.unknown()).max(4).parse(raw);
+      if (shuttingDown || (updates.state().phase === 'installing' && method !== 'updateState')) throw new AppError('正在安全退出并安装更新，请稍候');
+      if (method !== 'installUpdate') { activeCalls++; counted = true; }
       let value: unknown;
       switch (method) {
+        case 'updateState': value = updates.state(); break;
+        case 'checkForUpdates': await updates.check(); break;
+        case 'downloadUpdate': await updates.download(); break;
+        case 'cancelUpdateDownload': updates.cancel(); break;
+        case 'installUpdate': await updates.install(); break;
+        case 'openReleasePage': await shell.openExternal(RELEASE_PAGE); break;
+        case 'desktopState': value = desktopState(); break;
+        case 'setAutoStart': value = setAutoStart(z.boolean().parse(a[0])); break;
+        case 'quitApp': setImmediate(() => app.quit()); break;
         case 'snapshot': value = service.snapshot(); break;
         case 'events': value = service.events(z.string().parse(a[0]), z.string().parse(a[1])); break;
         case 'eventDetail': value = service.eventDetail(idSchema.parse(a[0]), z.enum(['series', 'instance']).parse(a[1]), z.string().optional().parse(a[2])); break;
@@ -76,11 +110,13 @@ async function main() {
       }
       return { ok: true, value };
     } catch (e) { return { ok: false, error: e instanceof z.ZodError ? e.issues.map(i => i.message).join('；') : errorMessage(e) }; }
+    finally { if (counted) activeCalls--; }
   });
   if (devUrl) await window.loadURL(devUrl); else await window.loadFile(join(__dirname, '../dist/index.html'));
   window.on('closed', () => { window = null; });
   let lastAuto = 0;
   const timer = setInterval(() => {
+    if (shuttingDown || updates.state().phase === 'installing') return;
     const settings = store.settings();
     if (settings.autoSync && Date.now() - lastAuto >= settings.interval * 60000) { lastAuto = Date.now(); void service.sync().catch(() => {}); }
     if (Notification.isSupported()) {
@@ -97,11 +133,21 @@ async function main() {
       store.run("DELETE FROM reminders WHERE shownAt < datetime('now','-30 days')");
     }
   }, 30000);
+  const checkAutomatically = () => { if (!shuttingDown && store.settings().autoUpdateCheck) void updates.check(); };
+  const startupCheck = setTimeout(checkAutomatically, 12000);
+  const updateTimer = setInterval(checkAutomatically, 6 * 60 * 60 * 1000);
   app.on('before-quit', event => {
-    if (shuttingDown) return; event.preventDefault(); shuttingDown = true; clearInterval(timer);
-    void service.syncEngine.cancel().finally(() => { store.close(); app.quit(); });
+    if (shutdownComplete) return;
+    event.preventDefault();
+    if (shuttingDown) return;
+    shuttingDown = true; clearInterval(timer); clearInterval(updateTimer); clearTimeout(startupCheck); updates.cancel();
+    void (async () => {
+      await service.syncEngine.cancel(); await waitForCalls(); await service.syncEngine.cancel();
+      store.close(); tray?.destroy(); tray = null; shutdownComplete = true; app.quit();
+    })();
   });
 }
 if (!app.requestSingleInstanceLock()) app.quit();
-else { app.on('second-instance', () => { window?.restore(); window?.show(); window?.focus(); }); void app.whenReady().then(main).catch(() => { dialog.showErrorBox('启动失败', '无法打开本地数据库或窗口，请检查数据目录权限和应用版本。'); app.quit(); }); }
+else { app.on('second-instance', showWindow); void app.whenReady().then(main).catch(() => { dialog.showErrorBox('启动失败', '无法打开本地数据库或窗口，请检查数据目录权限和应用版本。'); app.quit(); }); }
+app.on('activate', showWindow);
 app.on('window-all-closed', () => app.quit());

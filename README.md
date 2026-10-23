@@ -10,11 +10,25 @@
 
 在 `release` 中选择：
 
-- `Shixu-Setup-1.1.0-x64.exe`：安装程序，可选择安装路径并创建桌面快捷方式。
-- `Shixu-Portable-1.1.0-x64.exe`：免安装启动器。**便携版的数据仍存于当前 Windows 用户的应用数据目录，不随 EXE 移动**。
+- `Shixu-Setup-1.2.0-x64.exe`：安装程序，可选择安装路径并创建桌面快捷方式，支持应用内升级与可选开机自启。
+- `Shixu-Portable-1.2.0-x64.exe`：免安装启动器。**便携版的数据仍存于当前 Windows 用户的应用数据目录，不随 EXE 移动**。
 - `win-unpacked/时序日历.exe`：解压版入口，需要保留同目录全部文件。
 
 安装后无需 Node.js 或 Vite。应用尚未签名，Windows 可能显示 SmartScreen 提示。程序采用用户级安装，不需要管理员权限。当前未对每个 Windows 10/11 版本分别测试。
+
+通过“时序日历”快捷方式打开，或运行安装目录内的“时序日历.exe”。`node_modules/electron/dist/electron.exe` 是开发运行时，直接点击且不带项目参数会出现 Electron 默认页面，不是日历的独立入口。
+
+### 后台运行与开机自启
+
+默认点击关闭按钮会收纳到 Windows 右下角系统托盘，同步与提醒继续运行。点击托盘图标可恢复；右键选择“退出时序日历”或在设置中退出，才会停止应用。托盘图标可能位于系统隐藏图标箭头中。“设置 → 启动与后台”可关闭收纳行为，也可启用“开机自启”：登录 Windows 后启动到托盘，默认不启用。仅安装版提供自启，使用实际安装路径；系统禁用启动项时会提示。
+
+### 内置更新
+
+“设置 → 关于与更新”显示真实版本、更新内容和检查时间。默认启动后及每 6 小时检查本仓库的 GitHub 正式发布，可关闭自动检查。发现版本后手动下载，显示进度，可取消和重试；文件完整性校验成功后点击“重启并安装”。选择稍后时，正常退出也不会偷偷安装。安装前停止同步并安全关闭数据库，账户、凭据、离线修改与设置继续保留。
+
+**1.1.0 及更早版本没有更新器，需手动安装 1.2.0 一次**，以后可在软件内更新。便携/解压版可检查新版本，但需通过发布页面下载并退出后替换应用文件。开发模式不执行更新。网络或校验失败时可以重试，也保留手动下载入口。
+
+英文和数字使用内置 SF Pro（San Francisco），中文使用内置苹方，不依赖 Windows 系统字体安装。用户提供的原始素材保存在 [fonts](fonts/NOTICE.md)，相关权利与项目代码许可分开说明。
 
 ## 配置自己的 CalDAV
 
@@ -47,7 +61,7 @@ iCloud 等服务通常需要应用专用密码。若根地址发现失败，请�
 - 编辑使用 ical.js 完整组件树，保留未知属性、VTIMEZONE、参与者和未主动更改的提醒。支持 RRULE、RDATE、EXDATE、RECURRENCE-ID、DURATION、UTC 和浮动时间。
 - 含复杂重复例外时，不允许改变规则或平移整个系列的 DTSTART；含 RANGE=THISANDFUTURE 的系列不在本应用修改/删除单次实例；多个独立 VEVENT 共用资源或孤立例外需要在原服务编辑。这些限制会明确报错并保留数据。
 - 新建事件支持 1901–2099 年。新写入的 IANA 时区定义由 Electron ICU 生成，覆盖 1900–2100 年；远程定义优先保留。密集重复的展开限制为 100000 次迭代，超过时提示且不改写原数据。单次 DAV 响应上限 32MB；尚未实现 sync-collection 分页。
-- 读取常见 DISPLAY 提前提醒，并通过 Windows 通知提醒，**仅在应用运行时生效**。关闭窗口即退出，不在后台提醒；系统通知权限、专注助手可能影响显示。复杂、绝对时间、EMAIL/AUDIO、多重或 RELATED=END 提醒会保留，但当前不在本机触发。
+- 读取常见 DISPLAY 提前提醒，并通过 Windows 通知提醒，**仅在应用运行时生效**。收纳到托盘后继续提醒，彻底退出后不工作；系统通知权限、专注助手可能影响显示。复杂、绝对时间、EMAIL/AUDIO、多重或 RELATED=END 提醒会保留，但当前不在本机触发。
 - 未实现会议邀请、参与者回复、共享日历权限编辑、远程新建/删除日历或 CalDAV scheduling。
 - 当前已用真实本机 HTTP DAV 服务进行协议和 Electron 端到端测试。**未使用真实 Nextcloud、iCloud、Radicale、Baïkal 账户逐一验证**；不能将此测试视为所有服务商兼容性认证。
 
@@ -74,11 +88,15 @@ npm test            # Vitest 协议、ICS、SQLite、同步集成
 npm run build       # 静态渲染资源 + 主进程 / preload bundle
 npm start           # 启动本地生产构建
 npm run smoke       # 真实 Electron + 独立本机 DAV 服务；会打开测试窗口
+npm run test:updater # 真实 Electron HTTP 更新下载、完整性校验和取消重试
 npm run pack        # 生产构建并生成 Windows x64 安装版、便携版
 npm run pack:dir    # 仅生成可运行解压目录
+npm run release:publish # 检验标签与元数据，先上传 draft 的全部更新文件再公开
 ```
 
 首次下载需要访问 npm、Electron 发布源和 electron-builder 工具下载源。生产启动不需要开发服务器。图标已随源码提供；需要重绘时可用 Pillow 执行 `python scripts/make-icon.py`。
+
+发布时必须一并上传 Setup、Portable、Setup.exe.blockmap、latest.yml 和 SHA256SUMS.txt。`release:publish` 要求工作区已提交、`v<版本>` 标签指向 HEAD 且已推送远端；运行于已授权的 gh 登录环境。不要只上传 EXE，否则应用无法检查并获取更新。新版本先更新 package.json 和 lockfile，写发布说明，再构建、验证、提交、打标签和发布。详见 [更新设计](docs/UPDATE_DESIGN.md)。
 
 ## 目录
 
