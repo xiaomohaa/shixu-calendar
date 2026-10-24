@@ -8,7 +8,7 @@ function setup(mode: 'installer' | 'portable' | 'development' = 'installer') {
   return { driver, prepare, changed, controller: new UpdateController('1.2.0', mode, driver, changed, prepare) };
 }
 describe('更新控制与旧偏好兼容', () => {
-  it('旧版偏好自动获得更新检查、关闭到托盘与粗体默认值', () => { const { autoUpdateCheck, closeToTray, boldText, ...old } = defaultSettings; expect(settingsSchema.parse(old)).toMatchObject({ autoUpdateCheck: true, closeToTray: true, boldText: false }); });
+  it('旧版偏好自动获得更新检查、关闭到托盘、粗体与黄历默认值', () => { const { autoUpdateCheck, closeToTray, boldText, showAlmanac, ...old } = defaultSettings; expect(settingsSchema.parse(old)).toMatchObject({ autoUpdateCheck: true, closeToTray: true, boldText: false, showAlmanac: true }); });
   it('未检查和未完成下载均不能执行安装', async () => { const { controller, driver } = setup(); await controller.install(); await controller.check(); await controller.install(); expect(driver.install).not.toHaveBeenCalled(); });
   it('检查并发去重，检查成功后记录时间，不自动下载', async () => {
     const { controller, driver } = setup(); const a = controller.check(), b = controller.check(); expect(a).toBe(b); await a;

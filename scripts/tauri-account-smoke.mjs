@@ -155,7 +155,7 @@ try {
   const box = await span.boundingBox();
   const firstDay = await page.locator('.month-cell[data-date="2026-10-26"]').boundingBox();
   const lastDay = await page.locator('.month-cell[data-date="2026-10-28"]').boundingBox();
-  if (Math.abs(box.x - firstDay.x) > 2 || Math.abs(box.x + box.width - lastDay.x - lastDay.width) > 2) throw new Error('Multi-day capsule does not align with start and end grid lines');
+  if (Math.abs(box.x - firstDay.x - 3) > 1 || Math.abs(box.x + box.width - lastDay.x - lastDay.width + 3) > 1) throw new Error('Multi-day capsule does not align with start and end grid lines');
   const capsuleStyle = await span.locator('button').evaluate(el => ({ height: el.getBoundingClientRect().height, font: getComputedStyle(el).fontSize }));
   if (capsuleStyle.height > 18 || capsuleStyle.font !== '11px') throw new Error('Capsule size regression');
   if (await page.locator('.month-span').filter({ has: page.getByRole('button', { name: /跨周续接胶囊/ }) }).count() !== 2) throw new Error('Cross-week capsule continuation failed');
@@ -163,10 +163,41 @@ try {
   const past = page.locator('.month-span').filter({ has: page.getByRole('button', { name: /已结束跨天胶囊/ }) }).locator('button');
   if (await past.evaluate(el => Number(getComputedStyle(el).opacity)) >= .6) throw new Error('Ended event was not faded');
   await page.screenshot({ path: '.smoke-data/month-display.png' });
+  const fixedFonts = await page.evaluate(() => ({
+    solar: getComputedStyle(document.querySelector('.solar-date')).fontSize,
+    lunar: getComputedStyle(document.querySelector('.lunar-date')).fontSize,
+    event: getComputedStyle(document.querySelector('.month-event-title')).fontSize,
+  }));
+  await page.setViewportSize({ width: 480, height: 360 });
+  await page.waitForFunction(() => document.querySelector('.month-grid').classList.contains('inline-overflow'));
+  const smallLayout = await page.evaluate(() => {
+    const grid = document.querySelector('.month-grid'), rect = grid.getBoundingClientRect();
+    const day = document.querySelector('.month-cell[data-date="2026-10-23"]');
+    const event = day.querySelector('.month-event'), header = day.querySelector('.solar-date'), lunar = day.querySelector('.lunar-date');
+    const capsule = event.getBoundingClientRect(), cell = day.getBoundingClientRect();
+    return {
+      solar: getComputedStyle(header).fontSize, lunar: getComputedStyle(lunar).fontSize,
+      event: getComputedStyle(event.querySelector('.month-event-title')).fontSize,
+      capsuleVisible: capsule.top >= cell.top && capsule.bottom <= cell.bottom + 1 && capsule.height === 18,
+      allDates: [...grid.querySelectorAll('.month-day-button')].every(el => { const r = el.getBoundingClientRect(); return r.top >= rect.top && r.bottom <= rect.bottom + 1; }),
+      lunarLeft: lunar.getBoundingClientRect().left < header.getBoundingClientRect().left,
+      solarRight: cell.right - header.getBoundingClientRect().right < 6,
+      more: day.querySelector('.month-more')?.textContent,
+      mode: grid.dataset.eventMode, dots: grid.querySelectorAll('.event-dot').length,
+    };
+  });
+  if (smallLayout.solar !== fixedFonts.solar || smallLayout.lunar !== fixedFonts.lunar || smallLayout.event !== fixedFonts.event) throw new Error(`Fonts changed at minimum size: ${JSON.stringify(smallLayout)}`);
+  if (!smallLayout.capsuleVisible || !smallLayout.allDates || !smallLayout.lunarLeft || !smallLayout.solarRight || !/^\+\d+个$/.test(smallLayout.more) || smallLayout.mode !== 'capsules' || smallLayout.dots) throw new Error(`Minimum-size event layout failed: ${JSON.stringify(smallLayout)}`);
+  await page.locator('.month-cell[data-date="2026-10-23"] .month-more').click();
+  if (await page.locator('.day-agenda .agenda-event').count() < 4) throw new Error('Folded events were lost from the agenda');
+  await page.getByRole('button', { name: '关闭当天日程', exact: true }).click();
+  await page.screenshot({ path: '.smoke-data/small-window-events.png' });
+  await page.setViewportSize({ width: 1380, height: 900 });
+  await page.waitForFunction(() => !document.querySelector('.month-grid').classList.contains('inline-overflow'));
   await page.evaluate(id => window.shixu.deleteAccount(id), report.id);
   if ((await page.evaluate(() => window.shixu.snapshot())).accounts.length) throw new Error('Tauri account deletion failed');
   fixture.put('/subscription.ics', fixtureIcs('ICS 链接导入'));
-  await page.getByRole('button', { name: '打开设置', exact: true }).click();
+  await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.locator('.ics-import summary').click();
   await page.getByRole('textbox', { name: '订阅日历名称', exact: true }).fill('链接订阅测试');
   await page.getByRole('textbox', { name: 'ICS 链接', exact: true }).fill(`${fixture.url}/subscription.ics`);

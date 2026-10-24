@@ -8,7 +8,7 @@ import luxonPlugin from '@fullcalendar/luxon3';
 import zhCn from '@fullcalendar/core/locales/zh-cn';
 import type { EventApi, EventInput as FCEvent, DatesSetArg } from '@fullcalendar/core';
 import { DateTime } from 'luxon';
-import { CalendarDays, ChevronLeft, ChevronRight, Plus, Search, RefreshCw, Settings2, PanelLeftClose, PanelLeftOpen, Cloud, CloudOff, CircleCheck, TriangleAlert, X, Repeat2, MapPin } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Plus, Search, RefreshCw, Settings2, Cloud, CloudOff, CircleCheck, TriangleAlert, X, Repeat2, MapPin } from 'lucide-react';
 import type { CalendarEvent, EventInput, Snapshot } from '../shared/contracts';
 import { Editor } from './Editor';
 import { SettingsPanel } from './Settings';
@@ -18,6 +18,7 @@ import { MonthDate } from './MonthDate';
 import { calendarDateKey } from '../calendar/chineseCalendar';
 import { UpdateNotice } from './Updates';
 import { MonthGrid } from './MonthGrid';
+import { WindowChrome } from './WindowChrome';
 import { eventHasEnded } from '../calendar/eventDisplay';
 import { monthDays } from '../calendar/monthLayout';
 const calendarPlugins = [dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin, luxonPlugin];
@@ -34,7 +35,7 @@ export function App() {
   }, []);
   const [view, setView] = useState('dayGridMonth'), [title, setTitle] = useState(''), [selected, setSelected] = useState(DateTime.local().toISODate()!);
   const [month, setMonth] = useState(DateTime.local().startOf('month').toISODate()!);
-  const [miniMonth, setMiniMonth] = useState<DateTime>(DateTime.local().startOf('month')), [sidebar, setSidebar] = useState(true);
+  const [miniMonth, setMiniMonth] = useState<DateTime>(DateTime.local().startOf('month')), [sidebar, setSidebar] = useState(false), [narrow, setNarrow] = useState(() => matchMedia('(max-width: 900px)').matches);
   const [searchOpen, setSearchOpen] = useState(false), [query, setQuery] = useState(''), [editor, setEditor] = useState<EventInput | null>(null), [settingsTab, setSettingsTab] = useState<string | null>(null);
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [loading, setLoading] = useState(true);
   const calendarRef = useRef<FullCalendar>(null), range = useRef({ start: DateTime.local().startOf('month').minus({ days: 7 }).toISO()!, end: DateTime.local().endOf('month').plus({ days: 7 }).toISO()! });
@@ -68,9 +69,10 @@ export function App() {
     void document.fonts.ready.then(() => { if (active) { previous = ''; resize(); } });
     return () => { active = false; observer.disconnect(); clearTimeout(timer); };
   }, [view, loading]);
-  useEffect(() => { const media = matchMedia('(max-width: 900px)'); const apply = () => { if (media.matches) setSidebar(false); }; apply(); media.addEventListener('change', apply); return () => media.removeEventListener('change', apply); }, []);
+  useEffect(() => { const media = matchMedia('(max-width: 900px)'); const apply = () => { setNarrow(media.matches); setSidebar(false); }; apply(); media.addEventListener('change', apply); return () => media.removeEventListener('change', apply); }, []);
   useEffect(() => { const media = matchMedia('(prefers-color-scheme: dark)'); const apply = () => { document.documentElement.dataset.theme = snapshot?.settings.theme === 'dark' || (snapshot?.settings.theme === 'system' && media.matches) ? 'dark' : 'light'; }; apply(); media.addEventListener('change', apply); return () => media.removeEventListener('change', apply); }, [snapshot?.settings.theme]);
   useEffect(() => { if (searchOpen) searchRef.current?.focus(); }, [searchOpen]);
+  useEffect(() => { const key = (event: KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.key === ',') { event.preventDefault(); setSettingsTab('display'); } if (event.key === 'Escape') setSidebar(false); }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key); }, []);
   useEffect(() => { document.documentElement.dataset.boldText = String(snapshot?.settings.boldText ?? false); }, [snapshot?.settings.boldText]);
   useEffect(() => { if (notice) { const t = setTimeout(() => setNotice(''), 5000); return () => clearTimeout(t); } }, [notice]);
   const execute = async (fn: () => Promise<unknown>, done?: string) => { setError(''); try { await fn(); if (done) setNotice(done); await refresh(); } catch (e) { setError((e as Error).message); } };
@@ -122,8 +124,10 @@ export function App() {
   const miniStart = miniMonth.minus({ days: offset }), days = Array.from({ length: 42 }, (_, i) => miniStart.plus({ days: i }));
   const today = DateTime.now().setZone(prefs?.timezone || 'local').toISODate();
   const selectedEvents = filtered.filter(e => { const s = e.allDay ? e.start : DateTime.fromISO(e.start).setZone(prefs?.timezone || 'local').toISODate()!; const end = e.allDay ? DateTime.fromISO(e.end).minus({ days: 1 }).toISODate()! : DateTime.fromISO(e.end).minus({ milliseconds: 1 }).setZone(prefs?.timezone || 'local').toISODate()!; return s <= selected && end >= selected; });
-  return <div className={`app-shell ${sidebar ? '' : 'sidebar-collapsed'}`}>
-    <aside className="sidebar" aria-label="日历侧边栏"><div className="brand"><img className="app-mark" src={new URL('../../build/icon.png', import.meta.url).href} alt="时序日历"/><div><strong>时序</strong><span>留给生活的时间</span></div></div>
+  return <div className={`desktop-window ${window.__TAURI_INTERNALS__ ? 'native-chrome' : ''}`}><WindowChrome/><div className={`app-shell ${narrow && !sidebar ? 'sidebar-collapsed' : ''} ${narrow && sidebar ? 'sidebar-overlay' : ''}`}>
+    {narrow && <div className="sidebar-reveal-edge" aria-label="侧栏感应区" tabIndex={0} onPointerEnter={() => setSidebar(true)} onFocus={() => setSidebar(true)}/>}
+    {narrow && sidebar && <div className="sidebar-dismiss" onPointerEnter={() => { if (!settingsTab) setSidebar(false); }} onClick={() => setSidebar(false)}/>}
+    <aside className="sidebar" aria-label="日历侧边栏" onPointerLeave={() => { if (narrow && !settingsTab) setSidebar(false); }}><div className="brand"><img className="app-mark" src={new URL('../../build/icon.png', import.meta.url).href} alt="时序日历"/><div><strong>时序</strong><span>留给生活的时间</span></div></div>
       <button className="new-event-button" onClick={() => create()}><Plus size={18}/>新建日程<kbd>N</kbd></button>
       <button className="today-link" onClick={() => go(today!)}><CalendarDays size={17}/><span>今天</span><span className="today-number">{DateTime.now().setZone(prefs?.timezone || 'local').day}</span></button>
       <div className="sidebar-scroll">
@@ -132,12 +136,12 @@ export function App() {
         {!snapshot?.accounts.length && <button className="connect-calendar" onClick={() => setSettingsTab('accounts')}><Cloud size={17}/><span>连接 CalDAV 账户<small>同步你已有的日程</small></span><ChevronRight size={14}/></button>}
         {snapshot?.accounts.map(a => <section className="calendar-account" key={a.id}><div className="account-label"><span>{a.name}</span>{a.error ? <TriangleAlert size={13} className="text-error"/> : a.paused ? <CloudOff size={13}/> : sSync(snapshot, a.id) ? <RefreshCw size={13} className="spin"/> : <Cloud size={13}/>}</div>{snapshot.calendars.filter(c => c.accountId === a.id).map(c => <label className="calendar-toggle" key={c.id}><input type="checkbox" style={{ accentColor: c.color }} checked={c.visible} onChange={e => void execute(() => window.shixu.setCalendar(c.id, e.target.checked, c.color))}/><span>{c.name}</span>{c.readOnly && <small>只读</small>}</label>)}</section>)}
       </div>
-      <section className="day-summary"><div className="sidebar-section-heading"><h2>{DateTime.fromISO(selected).setLocale('zh-cn').toFormat(prefs?.dateFormat === 'numeric' ? 'yyyy/MM/dd cccc' : 'M月d日 cccc')}</h2><small>{selectedEvents.length} 项</small></div><Almanac date={selected}/>{selectedEvents.slice(0, 4).map(e => <button className={`summary-event ${eventHasEnded(e, prefs?.timezone || 'local', now) ? 'event-ended' : ''}`} key={e.id} onClick={() => openEvent(e)}><i className="color-dot" style={{ background: snapshot?.calendars.find(c => c.id === e.calendarId)?.color }}/><div><span>{e.title}</span><small>{e.allDay ? '全天' : DateTime.fromISO(e.start).setZone(prefs?.timezone || 'local').toFormat(prefs?.timeFormat === '12' ? 'h:mm a' : 'HH:mm')}</small></div></button>)}{selectedEvents.length === 0 && <p className="empty-day-message">这一天，还留有空白。</p>}</section>
+      <section className="day-summary"><div className="sidebar-section-heading"><h2>{DateTime.fromISO(selected).setLocale('zh-cn').toFormat(prefs?.dateFormat === 'numeric' ? 'yyyy/MM/dd cccc' : 'M月d日 cccc')}</h2><small>{selectedEvents.length} 项</small></div>{(prefs?.showAlmanac ?? true) && <Almanac date={selected}/>}{selectedEvents.slice(0, 4).map(e => <button className={`summary-event ${eventHasEnded(e, prefs?.timezone || 'local', now) ? 'event-ended' : ''}`} key={e.id} onClick={() => openEvent(e)}><i className="color-dot" style={{ background: snapshot?.calendars.find(c => c.id === e.calendarId)?.color }}/><div><span>{e.title}</span><small>{e.allDay ? '全天' : DateTime.fromISO(e.start).setZone(prefs?.timezone || 'local').toFormat(prefs?.timeFormat === '12' ? 'h:mm a' : 'HH:mm')}</small></div></button>)}{selectedEvents.length === 0 && <p className="empty-day-message">这一天，还留有空白。</p>}</section>
       </div>
       <div className="sidebar-footer"><button onClick={() => setSettingsTab('accounts')}><Settings2 size={17}/>设置</button><span title={snapshot?.accounts.find(a => a.error)?.error || '本地缓存可离线使用'}>{snapshot?.syncing.length ? <RefreshCw size={13} className="spin"/> : snapshot?.accounts.some(a => a.error) ? <CloudOff size={13}/> : <CircleCheck size={13}/>} {snapshot?.pending ? `${snapshot.pending} 项待同步` : '本地已保存'}</span></div>
     </aside>
     <main className="main-content"><header className="toolbar">
-      <div className="toolbar-left"><IconButton label={sidebar ? '收起侧边栏' : '展开侧边栏'} onClick={() => setSidebar(v => !v)}>{sidebar ? <PanelLeftClose size={19}/> : <PanelLeftOpen size={19}/>}</IconButton><IconButton label="新建日程" onClick={() => create()}><Plus size={23}/></IconButton><IconButton label="打开设置" onClick={() => setSettingsTab('accounts')}><Settings2 size={18}/></IconButton></div>
+      <div className="toolbar-left"><IconButton label="新建日程" onClick={() => create()}><Plus size={21}/></IconButton></div>
       <div className="view-switch" aria-label="日历视图">{[{ id: 'timeGridDay', label: '日' }, { id: 'timeGridWeek', label: '周' }, { id: 'dayGridMonth', label: '月' }, { id: 'listMonth', label: '列表' }].map(v => <button key={v.id} aria-pressed={view === v.id} className={view === v.id ? 'active' : ''} onClick={() => setViewTo(v.id)}>{v.label}</button>)}</div>
       <div className="toolbar-right"><button className="toolbar-search" aria-label="搜索日程" onClick={() => setSearchOpen(v => !v)}><Search size={18}/><span>搜索</span><kbd>Ctrl F</kbd></button><IconButton label={snapshot?.syncing.length ? '取消同步' : '同步日历'} disabled={!snapshot?.accounts.length} onClick={() => void execute(() => snapshot?.syncing.length ? window.shixu.cancelSync() : window.shixu.sync(), snapshot?.syncing.length ? '同步已取消' : '同步完成')}><RefreshCw size={18} className={snapshot?.syncing.length ? 'spin' : ''}/></IconButton></div>
     </header>
@@ -163,6 +167,6 @@ export function App() {
     {notice && <div className="toast" role="status"><CircleCheck size={17}/>{notice}</div>}
     {editor && snapshot && <Editor key={`${editor.resourceId ?? 'new'}:${editor.start}`} initial={editor} calendars={snapshot.calendars} close={() => setEditor(null)} saved={() => { setNotice('日程已保存在本地'); void refresh(); }}/>} {settingsTab && snapshot && <SettingsPanel snapshot={snapshot} close={() => setSettingsTab(null)} refresh={() => void refresh()} initialTab={settingsTab}/>}
     <datalist id="timezones">{['Asia/Shanghai','Asia/Hong_Kong','Asia/Tokyo','Asia/Singapore','Europe/London','Europe/Berlin','America/New_York','America/Los_Angeles','Australia/Sydney','UTC'].map(t => <option key={t} value={t}/>)}</datalist>
-  </div>;
+  </div></div>;
 }
 const sSync = (s: Snapshot, id: string) => s.syncing.includes(id);

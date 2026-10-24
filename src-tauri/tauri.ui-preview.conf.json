@@ -12,7 +12,10 @@
       "height": 900,
       "minWidth": 480,
       "minHeight": 360,
-      "resizable": true
+      "resizable": true,
+      "decorations": false,
+      "transparent": true,
+      "shadow": true
     }]
   },
   "plugins": {

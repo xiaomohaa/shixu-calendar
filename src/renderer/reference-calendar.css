@@ -1,0 +1,86 @@
+/* Fixed type, variable event capacity, and a single rounded desktop surface. */
+html, body, #root { background:transparent; }
+.desktop-window { height:100dvh; position:relative; overflow:hidden; background:var(--bg); border-radius:24px; isolation:isolate; clip-path:inset(0 round 24px); }
+.desktop-window.native-chrome { display:flex; flex-direction:column; }
+.desktop-window .app-shell { height:100%; flex:1; min-height:0; }
+.desktop-window.native-chrome .app-shell { height:calc(100% - 26px); }
+:root[data-maximized="true"] .desktop-window { border-radius:0; clip-path:none; }
+.window-chrome { height:26px; min-height:26px; display:flex; align-items:stretch; background:var(--bg); color:var(--muted); user-select:none; }
+.window-drag-region { flex:1; min-width:0; padding-left:18px; display:flex; align-items:center; app-region:drag; }
+.window-drag-region span { font-size:10px; pointer-events:none; }
+.window-actions { display:flex; flex:none; }
+.window-actions button { padding:0; width:38px; border:0; background:transparent; border-radius:0; }
+.window-actions button:hover { background:var(--hover); }
+.window-actions .window-close:hover { background:var(--accent); color:var(--bg); }
+.app-shell .toolbar, .app-shell .calendar-heading, .month-weekdays { background:var(--bg); }
+.app-shell .toolbar { height:44px; min-height:44px; padding:0 18px; }
+.app-shell .toolbar-left .icon-button { width:32px; height:32px; border:1px solid var(--line); background:var(--bg); }
+.app-shell .view-switch button, .app-shell .period-navigation .today-button { font-size:14px; }
+.app-shell .view-switch button { min-width:48px; padding:4px 12px; }
+.app-shell .calendar-heading { padding:12px 22px 10px; min-height:70px; }
+.app-shell .calendar-heading h1 { font-size:26px; line-height:1.15; letter-spacing:0; }
+.app-shell .calendar-heading div>span { margin-top:5px; }
+.app-shell .period-navigation .icon-button { border-radius:50%; width:28px; height:28px; }
+.app-shell .period-navigation .today-button { padding:3px 12px; height:28px; }
+.app-shell .month-weekdays span { font-size:14px; padding:7px 4px; }
+.app-shell .sidebar { padding:14px 14px 0; }
+.sidebar .brand { padding:0 7px 18px; }
+.sidebar .brand strong { font-size:16px; }
+.sidebar .calendar-toggle span, .sidebar .mini-header strong, .sidebar .mini-grid button,
+.sidebar .sidebar-section-heading h2, .sidebar .summary-event span, .sidebar .sidebar-footer button { font-size:14px; }
+.sidebar .mini-weekday { font-size:12px; }
+.sidebar .calendar-toggle { padding:7px 8px; }
+.sidebar .account-label { font-size:12px; }
+.sidebar .sidebar-footer { margin:0 -14px; padding:10px 14px; }
+.sidebar .lunar-heading strong { font-size:14px; }
+.sidebar-scroll { scrollbar-width:auto; scrollbar-color:auto; }
+.sidebar-scroll::-webkit-scrollbar { width:8px; }
+.sidebar-scroll::-webkit-scrollbar-track { background:transparent; }
+.sidebar-scroll::-webkit-scrollbar-thumb { border-radius:999px; background:color-mix(in oklab,var(--text) 28%,transparent); border:2px solid transparent; background-clip:padding-box; }
+.sidebar-scroll:hover::-webkit-scrollbar-thumb { background-color:color-mix(in oklab,var(--text) 42%,transparent); }
+.sidebar-scroll::-webkit-scrollbar-button { display:none; width:0; height:0; }
+.sidebar-scroll::-webkit-scrollbar-corner { background:transparent; }
+.sidebar-reveal-edge { position:absolute; top:26px; bottom:0; left:0; width:6px; z-index:28; }
+.sidebar-dismiss { position:absolute; inset:26px 0 0 240px; z-index:24; background:transparent; }
+.app-shell.sidebar-overlay .sidebar { visibility:visible; }
+.month-grid { --date-header-height:24px; }
+.app-shell .month-day-button, .app-shell .month-day-button .month-date-content { height:var(--date-header-height); min-height:0; }
+.app-shell .month-day-button .month-date-content { padding:0; display:block; }
+.app-shell .month-day-button .solar-date { left:auto; right:4px; top:1px; transform:none; width:auto; min-width:22px; height:22px; font-size:14px; line-height:20px; font-weight:500; }
+.app-shell .month-day-button .lunar-date { left:4px; top:2px; font-size:12px; line-height:20px; max-width:calc(100% - 31px); font-weight:400; }
+.app-shell .month-cell.is-today .solar-date { padding:0 3px; border-radius:50%; min-width:22px; }
+.app-shell .month-event { font-size:11px; }
+.app-shell .event-capsule { height:18px; line-height:16px; padding:1px 4px; }
+.app-shell .month-event-time { font-size:9px; }
+.app-shell .month-more { font-size:11px; }
+.app-shell .month-event-list { gap:2px; padding-left:3px; padding-right:3px; }
+@media (max-width:900px) {
+  .app-shell .toolbar { padding:0 12px; }
+  .app-shell .calendar-heading { padding-left:14px; padding-right:14px; }
+  .sidebar .brand { padding-bottom:12px; }
+}
+@media (max-width:580px) {
+  .app-shell .toolbar-left .icon-button { display:inline-flex; }
+  .app-shell .view-switch button { min-width:34px; padding:4px 7px; }
+  .app-shell .calendar-heading { gap:8px; }
+  .app-shell .period-navigation .today-button { padding:3px 8px; }
+  .app-shell .status-bar { font-size:10px; }
+  .app-shell .search-bar { position:absolute; top:30px; right:10px; width:calc(100% - 20px); margin:0; z-index:26; background:var(--bg); }
+  .search-bar>span { display:none; }
+  .month-event-time { display:none; }
+  .month-event .pending-mark, .month-event>svg { display:none; }
+}
+@media (max-height:520px) {
+  .app-shell .toolbar { height:34px; min-height:34px; }
+  .app-shell .calendar-heading { padding:3px 12px; height:34px; min-height:34px; }
+  .app-shell .calendar-heading h1 { font-size:26px; }
+  .app-shell .calendar-heading div>span { display:none; }
+  .app-shell .month-weekdays span { padding:1px 3px; line-height:18px; }
+  .app-shell .status-bar, .onboarding-strip { display:none; }
+  .month-grid { --date-header-height:21px; }
+  .app-shell .month-day-button .solar-date { top:0; height:20px; }
+  .app-shell .month-day-button .lunar-date { top:0; }
+  .settings-panel .panel-header { padding:12px 18px; }
+  .settings-nav { overflow-y:auto; }
+  .settings-brand { display:none; }
+}

@@ -6,9 +6,11 @@ export function monthDays(month: string, firstDay: number, timezone: string): st
   const offset = (start.weekday % 7 - firstDay + 7) % 7;
   return Array.from({ length: 42 }, (_, index) => start.minus({ days: offset }).plus({ days: index }).toISODate()!);
 }
-export function monthLayout(width: number, height: number) {
-  const column = width / 7, row = height / 6;
-  return { compact: column < 116 || row < 88, capacity: Math.max(1, Math.min(5, Math.floor((row - 62) / 20))), dots: Math.max(1, Math.min(5, Math.floor((column - 36) / 20))) };
+export function monthLayout(_width: number, height: number) {
+  const row = height / 6;
+  // Font sizes and row height stay fixed. Only the number of visible events changes.
+  return { compact: row < 72, inlineOverflow: row < 62,
+    capacity: Math.max(1, Math.min(5, Math.floor((row - 40) / 20))) };
 }
 /** Compare civil dates; all-day DTEND is exclusive, timed ends use an instant. */
 export function groupMonthEvents(events: CalendarEvent[], days: string[], timezone: string) {

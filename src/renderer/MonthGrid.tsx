@@ -24,13 +24,13 @@ export const MonthGrid = memo(function MonthGrid(p: Props) {
   const days = useMemo(() => monthDays(p.month, p.firstDay, p.timezone), [p.month, p.firstDay, p.timezone]);
   const groups = useMemo(() => groupMonthEvents(p.events, days, p.timezone), [p.events, days, p.timezone]);
   const weeks = useMemo(() => Array.from({ length: 6 }, (_, row) => weekEventSpans(p.events, days.slice(row * 7, row * 7 + 7), p.timezone)), [p.events, days, p.timezone]);
-  const spanCapacity = layout.compact ? 1 : layout.capacity;
+  const spanCapacity = layout.capacity;
   const colors = useMemo(() => new Map(p.calendars.map(calendar => [calendar.id, calendar])), [p.calendars]);
   const today = DateTime.now().setZone(p.timezone).toISODate();
   useLayoutEffect(() => {
     const element = grid.current; if (!element) return;
     let frame = 0;
-    const measure = () => { const next = monthLayout(element.clientWidth, element.clientHeight); setLayout(old => old.compact === next.compact && old.capacity === next.capacity && old.dots === next.dots ? old : next); };
+    const measure = () => { const next = monthLayout(element.clientWidth, element.clientHeight); setLayout(old => old.compact === next.compact && old.capacity === next.capacity && old.inlineOverflow === next.inlineOverflow ? old : next); };
     measure();
     const observer = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); });
     observer.observe(element); return () => { observer.disconnect(); cancelAnimationFrame(frame); };
@@ -53,7 +53,7 @@ export const MonthGrid = memo(function MonthGrid(p: Props) {
   const expand = (day: string, opener: HTMLElement) => { p.select(day); popupOpener.current = opener; setExpanded(day); };
   const color = (event: CalendarEvent) => colors.get(event.calendarId)?.color || '#d65c4f';
   const isWritable = (event: CalendarEvent) => !colors.get(event.calendarId)?.readOnly && !event.conflict;
-  const eventButton = (event: CalendarEvent, dot: boolean, day: string) => <button key={event.id} type="button" className={`month-event ${dot ? 'event-dot' : 'event-capsule'} ${event.pending ? 'event-pending' : ''} ${event.conflict ? 'event-conflict' : ''} ${eventHasEnded(event, p.timezone, p.now) ? 'event-ended' : ''}`}
+  const eventButton = (event: CalendarEvent, day: string) => <button key={event.id} type="button" className={`month-event event-capsule ${event.pending ? 'event-pending' : ''} ${event.conflict ? 'event-conflict' : ''} ${eventHasEnded(event, p.timezone, p.now) ? 'event-ended' : ''}`}
     style={{ '--event-color': color(event) } as CSSProperties} aria-label={`${timeLabel(event, p.timezone, p.timeFormat)} ${event.title}${event.pending ? '，待同步' : ''}`}
     title={`${timeLabel(event, p.timezone, p.timeFormat)} ${event.title}${event.location ? ` · ${event.location}` : ''}`} draggable={isWritable(event)}
     onPointerDown={e => e.stopPropagation()} onDragStart={e => {
@@ -68,21 +68,21 @@ export const MonthGrid = memo(function MonthGrid(p: Props) {
       e.dataTransfer.effectAllowed = 'move';
     }}
     onClick={e => { e.stopPropagation(); p.open(event); }} onDoubleClick={e => e.stopPropagation()}>
-    <i className="event-color-dot"/>{!dot && <><span className="month-event-time">{event.allDay ? '' : timeLabel(event, p.timezone, p.timeFormat)}</span><span className="month-event-title">{event.title}</span>{event.recurring && <Repeat2 size={11}/>} {event.pending && <span className="pending-mark" aria-hidden="true">·</span>}</>}
+    <i className="event-color-dot"/>{<><span className="month-event-time">{event.allDay ? '' : timeLabel(event, p.timezone, p.timeFormat)}</span><span className="month-event-title">{event.title}</span>{event.recurring && <Repeat2 size={11}/>} {event.pending && <span className="pending-mark" aria-hidden="true">·</span>}</>}
   </button>;
   return <section className="month-view" role="grid" aria-label="月日历">
     <div className="month-weekdays" role="row">{Array.from({ length: 7 }, (_, i) => { const day = (p.firstDay + i) % 7; return <span role="columnheader" className={day === 0 || day === 6 ? 'weekend' : ''} key={day}>周{['日','一','二','三','四','五','六'][day]}</span>; })}</div>
-    <div className="month-scroll"><div ref={grid} className={`month-grid ${layout.compact ? 'compact-events' : ''}`} role="rowgroup" aria-label="月视图日期与日程" data-event-mode={layout.compact ? 'dots' : 'capsules'}>
+    <div className="month-scroll"><div ref={grid} className={`month-grid ${layout.inlineOverflow ? 'inline-overflow' : ''}`} role="rowgroup" aria-label="月视图日期与日程" data-event-mode="capsules">
       {Array.from({ length: 6 }, (_, row) => <div role="row" className="month-week-row" key={row}>{days.slice(row * 7, row * 7 + 7).map(day => {
         const list = groups.get(day)!, dt = DateTime.fromISO(day, { zone: p.timezone });
         const activeRange = selection && day >= [selection.start, selection.end].sort()[0] && day <= [selection.start, selection.end].sort()[1];
         const spans = weeks[row].filter(span => span.lane < spanCapacity && day >= days[row * 7 + span.start] && day <= days[row * 7 + span.end]);
         const reserved = spans.reduce((count, span) => Math.max(count, span.lane + 1), 0);
         const singleDay = list.filter(event => { const range = eventDateRange(event, p.timezone); return range.start === range.end; });
-        const limit = layout.compact ? (reserved ? 0 : layout.dots) : Math.max(0, layout.capacity - reserved);
+        const limit = Math.max(0, layout.capacity - reserved);
         const visible = singleDay.slice(0, limit), overflow = list.length - visible.length - spans.length;
         return <div role="gridcell" tabIndex={0} aria-selected={day === p.selected} aria-label={`${dt.setLocale('zh-CN').toFormat('M月d日 cccc')}，${list.length} 项日程`} data-date={day} key={day}
-          className={`month-cell ${day.slice(0, 7) !== p.month.slice(0, 7) ? 'other-month' : ''} ${day === today ? 'is-today' : ''} ${day === p.selected ? 'is-selected' : ''} ${dt.weekday > 5 ? 'weekend' : ''} ${dragOver === day ? 'drop-target' : ''} ${activeRange ? 'range-selected' : ''}`}
+          className={`month-cell ${day.slice(0, 7) !== p.month.slice(0, 7) ? 'other-month' : ''} ${day === today ? 'is-today' : ''} ${day === p.selected ? 'is-selected' : ''} ${dt.weekday > 5 ? 'weekend' : ''} ${dragOver === day ? 'drop-target' : ''} ${activeRange ? 'range-selected' : ''} ${overflow > 0 ? 'has-overflow' : ''}`}
           onClick={() => p.select(day)} onDoubleClick={e => { if (!(e.target as HTMLElement).closest('button')) p.create(day, undefined, true); }}
           onKeyDown={e => {
             if (e.target !== e.currentTarget) return;
@@ -96,11 +96,11 @@ export const MonthGrid = memo(function MonthGrid(p: Props) {
           onDragOver={e => { if (e.dataTransfer.types.includes('application/x-shixu-event')) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOver(day); } }}
           onDragLeave={() => setDragOver(null)} onDrop={e => { e.preventDefault(); setDragOver(null); const event = p.events.find(event => event.id === e.dataTransfer.getData('application/x-shixu-event')); if (event && isWritable(event)) p.move(event, day, e.dataTransfer.getData('application/x-shixu-day')); }}>
           <button className="month-day-button" type="button" aria-label={`选择 ${day}`} onClick={e => { e.stopPropagation(); p.select(day); }} onDoubleClick={e => { e.stopPropagation(); p.create(day, undefined, true); }}><MonthDate date={dt.toJSDate()} timezone={p.timezone} dayText={String(dt.day)}/></button>
-          <div className={layout.compact ? 'month-event-dots' : 'month-event-list'} style={{ '--reserved-lanes': reserved } as CSSProperties}>{visible.map(event => eventButton(event, layout.compact, day))}
-            {overflow > 0 && <button className="month-more" type="button" aria-label={`${day} 查看全部 ${list.length} 项日程`} onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); expand(day, e.currentTarget); }} onDoubleClick={e => e.stopPropagation()}>+{overflow}<span className="more-label"> 项</span></button>}
+          <div className="month-event-list" style={{ '--reserved-lanes': reserved } as CSSProperties}>{visible.map(event => eventButton(event, day))}
+            {overflow > 0 && <button className="month-more" type="button" aria-label={`${day} 查看全部 ${list.length} 项日程`} onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); expand(day, e.currentTarget); }} onDoubleClick={e => e.stopPropagation()}>+{overflow}个</button>}
           </div>
         </div>;
-      })}<div className="month-span-layer">{weeks[row].filter(span => span.lane < spanCapacity).map(span => <div key={span.event.id} className={`month-span ${span.continuesLeft ? 'continues-left' : ''} ${span.continuesRight ? 'continues-right' : ''}`} data-start={days[row * 7 + span.start]} data-end={days[row * 7 + span.end]} style={{ gridColumn: `${span.start + 1} / ${span.end + 2}`, gridRow: span.lane + 1 }}>{eventButton(span.event, false, days[row * 7 + span.start])}</div>)}</div></div>)}
+      })}<div className="month-span-layer">{weeks[row].filter(span => span.lane < spanCapacity).map(span => <div key={span.event.id} className={`month-span ${span.continuesLeft ? 'continues-left' : ''} ${span.continuesRight ? 'continues-right' : ''}`} data-start={days[row * 7 + span.start]} data-end={days[row * 7 + span.end]} style={{ gridColumn: `${span.start + 1} / ${span.end + 2}`, gridRow: span.lane + 1 }}>{eventButton(span.event, days[row * 7 + span.start])}</div>)}</div></div>)}
     </div></div>
     {expanded && <div ref={popup} className="day-agenda" role="dialog" aria-modal="false" aria-label={`${expanded} 的全部日程`}>
       <header><div><strong>{DateTime.fromISO(expanded).setLocale('zh-CN').toFormat('M月d日 cccc')}</strong><span>{groups.get(expanded)?.length || 0} 项日程</span></div><button className="icon-button" aria-label="关闭当天日程" ref={closeButton} onClick={() => { setExpanded(null); popupOpener.current?.focus(); }}><X size={17}/></button></header>

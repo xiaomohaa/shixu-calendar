@@ -3,23 +3,24 @@ import { Bold, CalendarDays, ChevronRight, Cloud, Database, Monitor, Plus, Refre
 import type { AccountInput, Calendar, Settings as Preferences, Snapshot } from '../shared/contracts';
 import { Busy, Field, IconButton, Panel } from './components';
 import { version as appVersion } from '../../package.json';
-import { version as tauriVersion } from '../../src-tauri/tauri.conf.json';
 import { UpdatesPanel } from "./Updates";
 import { DesktopSettings } from "./DesktopSettings";
 import { IcsImport } from './IcsImport';
 const sections = [{ id: "desktop", label: "启动与后台", icon: Monitor }, { id: "updates", label: "关于与更新", icon: Download }, { id: 'accounts', label: '账户与同步', icon: Cloud }, { id: 'calendar', label: '日历偏好', icon: CalendarDays }, { id: 'display', label: '显示设置', icon: Bold }, { id: 'appearance', label: '外观', icon: Monitor }, { id: 'privacy', label: '数据与隐私', icon: ShieldCheck }, { id: 'conflicts', label: '同步冲突', icon: TriangleAlert }];
 const emptyAccount: AccountInput = { name: '', url: '', username: '', password: '', allowHttp: false, paused: false };
 const nativeTauri = !!window.__TAURI_INTERNALS__;
-const displayVersion = nativeTauri ? tauriVersion : appVersion;
 const displayPlatform = nativeTauri ? 'Tauri' : 'Electron';
 const credentialProtection = nativeTauri ? 'Windows DPAPI' : 'Electron safeStorage 和 Windows DPAPI';
 
 export function SettingsPanel({ snapshot: s, close, refresh, initialTab = 'accounts' }: { snapshot: Snapshot; close: () => void; refresh: () => void; initialTab?: string }) {
+  const [displayVersion, setDisplayVersion] = useState(nativeTauri ? '…' : appVersion);
+  useEffect(() => { if (nativeTauri) void window.shixu.updateState().then(state => setDisplayVersion(state.currentVersion)); }, []);
   const [tab, setTab] = useState(initialTab), [prefs, setPrefs] = useState<Preferences>(s.settings), [account, setAccount] = useState<AccountInput | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState(''), [found, setFound] = useState<Calendar[]>([]);
   const [inspecting, setInspecting] = useState<string | null>(null);
   useEffect(() => { setPrefs(p => ({ ...p, defaultCalendar: s.settings.defaultCalendar })); }, [s.settings.defaultCalendar]);
   useEffect(() => { setPrefs(p => ({ ...p, boldText: s.settings.boldText })); }, [s.settings.boldText]);
+  useEffect(() => { setPrefs(p => ({ ...p, showAlmanac: s.settings.showAlmanac })); }, [s.settings.showAlmanac]);
   useEffect(() => { setPrefs(p => ({ ...p, autoUpdateCheck: s.settings.autoUpdateCheck, closeToTray: s.settings.closeToTray })); }, [s.settings.autoUpdateCheck, s.settings.closeToTray]);
   const set = <K extends keyof Preferences>(key: K, value: Preferences[K]) => setPrefs(p => ({ ...p, [key]: value }));
   const act = async (fn: () => Promise<unknown>, message = '') => { setBusy(true); setError(''); setMessage(''); try { await fn(); setMessage(message); refresh(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
@@ -68,7 +69,14 @@ export function SettingsPanel({ snapshot: s, close, refresh, initialTab = 'accou
             throw error;
           }
         }, '显示设置已保存');
-      }}/>启用粗体显示</label><p className="form-hint" id="bold-text-hint">加粗日历、日程和设置中的文字。修改后立即生效，下次启动时保留。</p></>}
+      }}/>启用粗体显示</label><p className="form-hint" id="bold-text-hint">加粗日历、日程和设置中的文字。修改后立即生效，下次启动时保留。</p><div className="settings-group"><label className="check-row"><input type="checkbox" checked={prefs.showAlmanac ?? true} disabled={busy} onChange={event => {
+        const checked = event.target.checked, previous = prefs.showAlmanac;
+        set('showAlmanac', checked);
+        void act(async () => {
+          try { const latest = await window.shixu.snapshot(); await window.shixu.settings({ ...latest.settings, showAlmanac: checked }); }
+          catch (error) { set('showAlmanac', previous); throw error; }
+        }, '显示设置已保存');
+      }}/>显示黄历</label><p className="form-hint">显示侧栏中的农历详情和黄历宜忌。关闭后，日格左上角仍显示农历日期。</p></div></>}
       {tab === "updates" && <UpdatesPanel/>}
       {busy && <div className="settings-busy" role="status"><Busy/></div>}
     </div></div>

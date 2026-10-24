@@ -65,6 +65,12 @@ struct Settings {
     close_to_tray: bool,
     #[serde(default)]
     bold_text: bool,
+    #[serde(default = "default_show_almanac")]
+    show_almanac: bool,
+}
+
+fn default_show_almanac() -> bool {
+    true
 }
 
 impl Settings {
