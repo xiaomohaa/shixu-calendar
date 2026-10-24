@@ -13,4 +13,5 @@ import './editor-popover.css';
 import './year-grid.css';
 import './liquid-glass.css';
 import './compact-toolbar.css';
+import './time-blocks.css';
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);

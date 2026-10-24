@@ -94,7 +94,7 @@ export function expandResource(r: Resource, rangeStart: string, rangeEnd: string
 }
 function inputTime(value: string, allDay: boolean, tz: string, root: ICAL.Component, floating = false): ICAL.Time {
   if (allDay) { if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !DateTime.fromISO(value).isValid) throw new AppError('全天日期格式无效'); return ICAL.Time.fromDateString(value); }
-  const dt = DateTime.fromISO(value, { zone: tz });
+  const dt = DateTime.fromISO(value, { zone: tz }).setZone(tz);
   if (!dt.isValid || dt.year < 1901 || dt.year > 2099) throw new AppError('日期时间或时区无效（支持 1901–2099 年）');
   const wall = value.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::\d{2})?$/);
   if (wall && dt.toFormat("yyyy-MM-dd'T'HH:mm") !== wall[1]) throw new AppError('该当地时间因夏令时切换而不存在，请选择其他时间');

@@ -9,7 +9,7 @@ import zhCn from '@fullcalendar/core/locales/zh-cn';
 import type { EventApi, EventInput as FCEvent, DatesSetArg } from '@fullcalendar/core';
 import { DateTime } from 'luxon';
 import { CalendarDays, ChevronLeft, ChevronRight, Plus, Search, RefreshCw, Settings2, Cloud, CircleCheck, TriangleAlert, X, Repeat2, List } from 'lucide-react';
-import type { CalendarEvent, EventInput, Snapshot } from '../shared/contracts';
+import { DEFAULT_TIMEZONE, type CalendarEvent, type EventInput, type Snapshot } from '../shared/contracts';
 import { Editor } from './Editor';
 import { SettingsPanel } from './Settings';
 import { IconButton } from './components';
@@ -22,6 +22,7 @@ import { getChineseCalendarDay } from '../calendar/chineseCalendar';
 import { draftEvent } from '../calendar/draftEvent';
 import { WindowChrome } from './WindowChrome';
 import { ToolbarSearch } from './ToolbarSearch';
+import { onEventColor } from '../calendar/eventColor';
 import { holidayCalendarIds } from '../calendar/eventMarker';
 import { EventMark } from './EventMark';
 import { monthDays } from '../calendar/monthLayout';
@@ -39,14 +40,14 @@ export function App() {
     document.addEventListener('visibilitychange', update);
     return () => { clearInterval(timer); window.removeEventListener('focus', update); document.removeEventListener('visibilitychange', update); };
   }, []);
-  const [view, setView] = useState('dayGridMonth'), [title, setTitle] = useState(''), [selected, setSelected] = useState(DateTime.local().toISODate()!);
-  const [month, setMonth] = useState(DateTime.local().startOf('month').toISODate()!);
-  const [miniMonth, setMiniMonth] = useState<DateTime>(DateTime.local().startOf('month')), [sidebar, setSidebar] = useState(false), [narrow, setNarrow] = useState(() => matchMedia('(max-width: 900px)').matches);
+  const [view, setView] = useState('dayGridMonth'), [title, setTitle] = useState(''), [selected, setSelected] = useState(DateTime.now().setZone(DEFAULT_TIMEZONE).toISODate()!);
+  const [month, setMonth] = useState(DateTime.now().setZone(DEFAULT_TIMEZONE).startOf('month').toISODate()!);
+  const [miniMonth, setMiniMonth] = useState<DateTime>(DateTime.now().setZone(DEFAULT_TIMEZONE).startOf('month')), [sidebar, setSidebar] = useState(false), [narrow, setNarrow] = useState(() => matchMedia('(max-width: 900px)').matches);
   const [searchOpen, setSearchOpen] = useState(false), [query, setQuery] = useState(''), [editor, setEditor] = useState<EventInput | null>(null), [settingsTab, setSettingsTab] = useState<string | null>(null);
   const [draft, setDraft] = useState<EventInput | null>(null);
   const [editorAnchor, setEditorAnchor] = useState<PanelAnchor>();
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [loading, setLoading] = useState(true);
-  const calendarRef = useRef<FullCalendar>(null), range = useRef({ start: DateTime.local().startOf('month').minus({ days: 7 }).toISO()!, end: DateTime.local().endOf('month').plus({ days: 7 }).toISO()! });
+  const calendarRef = useRef<FullCalendar>(null), range = useRef({ start: DateTime.now().setZone(DEFAULT_TIMEZONE).startOf('month').minus({ days: 7 }).toISO()!, end: DateTime.now().setZone(DEFAULT_TIMEZONE).endOf('month').plus({ days: 7 }).toISO()! });
   const loadId = useRef(0), booted = useRef(false);
   const calendarContainer = useRef<HTMLDivElement>(null);
   const refresh = useCallback(async () => {
@@ -57,7 +58,7 @@ export function App() {
       const data = await window.shixu.snapshot();
       if (loadId.current !== id) return;
       setSnapshot(data); setEvents(list);
-      if (!booted.current) { booted.current = true; setView(data.settings.view); }
+      if (!booted.current) { booted.current = true; setView(data.settings.view); const today = DateTime.now().setZone(data.settings.timezone); setSelected(today.toISODate()!); setMonth(today.startOf('month').toISODate()!); setMiniMonth(today.startOf('month')); }
     } catch (e) { setError((e as Error).message); } finally { setLoading(false); }
   }, []);
   useEffect(() => { void refresh(); return window.shixu?.onChange(() => void refresh()); }, [refresh]);
@@ -91,7 +92,7 @@ export function App() {
     setEditorAnchor(anchor);
     const initial: EventInput = { calendarId: pref.defaultCalendar || snapshot.calendars.find(c => !c.readOnly)!.id, title: '', start: allDay ? base.toISODate()! : base.toISO()!, end: end || (allDay ? base.plus({ days: 1 }).toISODate()! : base.plus({ minutes: pref.duration }).toISO()!), allDay, timezone: pref.timezone, location: '', description: '', rrule: '', reminder: pref.reminder, scope: 'series' }; setEditor(initial); setDraft(initial);
   };
-  useEffect(() => { const key = (e: KeyboardEvent) => { const editing = ['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName); if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); setSearchOpen(true); } if (e.key === 'Escape' && !editor && !settingsTab) { setSearchOpen(false); setQuery(''); } if (!editing && !editor && !settingsTab && e.key.toLowerCase() === 'n') create(); if (!editing && !editor && !settingsTab && e.key.toLowerCase() === 't') go(DateTime.now().setZone(snapshot?.settings.timezone || 'local').toISODate()!); }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key); });
+  useEffect(() => { const key = (e: KeyboardEvent) => { const editing = ['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement).tagName); if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); setSearchOpen(true); } if (e.key === 'Escape' && !editor && !settingsTab) { setSearchOpen(false); setQuery(''); } if (!editing && !editor && !settingsTab && e.key.toLowerCase() === 'n') create(); if (!editing && !editor && !settingsTab && e.key.toLowerCase() === 't') go(DateTime.now().setZone(snapshot?.settings.timezone || DEFAULT_TIMEZONE).toISODate()!); }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key); });
   const openEvent = (ev: CalendarEvent) => void execute(async () => { setDraft(null); setEditorAnchor(undefined); setEditor(await window.shixu.eventDetail(ev.resourceId, ev.recurring ? 'instance' : 'series', ev.recurrenceId)); });
   const go = (date: string) => { setSelected(date); setMiniMonth(DateTime.fromISO(date).startOf('month')); if (view === 'dayGridMonth' || view === 'multiMonthYear') setMonth(DateTime.fromISO(date).startOf('month').toISODate()!); else calendarRef.current?.getApi().gotoDate(date); };
   const navigate = (direction: number) => { if (view === 'dayGridMonth' || view === 'multiMonthYear') go(DateTime.fromISO(month).plus(view === 'multiMonthYear' ? { years: direction } : { months: direction }).toISODate()!); else if (direction < 0) calendarRef.current?.getApi().prev(); else calendarRef.current?.getApi().next(); };
@@ -104,7 +105,7 @@ export function App() {
     calendarRef.current?.getApi().changeView(next);
   };
   const datesSet = useCallback((info: DatesSetArg) => {
-    setTitle(info.view.title); setView(info.view.type); const current = DateTime.fromJSDate(info.view.calendar.getDate()).setZone(snapshot?.settings.timezone || 'local'); setSelected(current.toISODate()!); setMiniMonth(current.startOf('month'));
+    setTitle(info.view.title); setView(info.view.type); const current = DateTime.fromJSDate(info.view.calendar.getDate()).setZone(snapshot?.settings.timezone || DEFAULT_TIMEZONE); setSelected(current.toISODate()!); setMiniMonth(current.startOf('month'));
     const next = { start: info.start.toISOString(), end: info.end.toISOString() };
     if (range.current.start !== next.start || range.current.end !== next.end) { range.current = next; void refresh(); }
   }, [refresh, snapshot?.settings.timezone]);
@@ -129,10 +130,11 @@ export function App() {
   const displayEvents = useMemo(() => preview ? [...filtered, preview] : filtered, [filtered, preview]);
   const updateDraft = useCallback((input: EventInput) => {
     setDraft(input);
-    const date = DateTime.fromISO(input.start, { zone: input.timezone });
+    const zone = prefs?.timezone || DEFAULT_TIMEZONE;
+    const date = input.allDay ? DateTime.fromISO(input.start, { zone }) : DateTime.fromISO(input.start, { zone: input.timezone }).setZone(zone);
     if (!date.isValid) return;
     setMonth(current => {
-      const days = monthDays(current, prefs?.firstDay ?? 1, prefs?.timezone || 'local'), day = date.toISODate()!;
+      const days = monthDays(current, prefs?.firstDay ?? 1, prefs?.timezone || DEFAULT_TIMEZONE), day = date.toISODate()!;
       return day < days[0] || day > days[41] ? date.startOf('month').toISODate()! : current;
     });
   }, [prefs?.firstDay, prefs?.timezone]);
@@ -151,18 +153,18 @@ export function App() {
   const holidays = useMemo(() => holidayCalendarIds(snapshot?.calendars ?? [], snapshot?.accounts ?? []), [snapshot?.calendars, snapshot?.accounts]);
   const fcEvents: FCEvent[] = useMemo(() => displayEvents.map(e => {
     const c = snapshot?.calendars.find(c => c.id === e.calendarId), color = c?.color || '#d65c4f';
-    return { id: e.id, title: e.title, start: e.start, end: e.end, allDay: e.allDay, backgroundColor: color, borderColor: color, textColor: '#fdfcfb', editable: !e.draft && !c?.readOnly && !e.conflict, classNames: [e.draft ? 'event-draft' : '', e.allDay ? 'event-all-day' : 'event-timed', e.pending ? 'event-pending' : '', e.conflict ? 'event-conflict' : ''], extendedProps: { ...e, color, holiday: holidays.has(e.calendarId) } };
-  }), [displayEvents, snapshot?.calendars, holidays]);
+    return { id: e.id, title: e.title, start: e.start, end: e.end, allDay: e.allDay, backgroundColor: color, borderColor: color, textColor: '#fdfcfb', editable: !e.draft && !c?.readOnly && !e.conflict, classNames: [editor?.resourceId === e.resourceId && (!editor.recurrenceId || editor.recurrenceId === e.recurrenceId) ? 'event-selected' : '', e.draft ? 'event-draft' : '', e.allDay ? 'event-all-day' : 'event-timed', e.pending ? 'event-pending' : '', e.conflict ? 'event-conflict' : ''], extendedProps: { ...e, color, onColor: onEventColor(color), holiday: holidays.has(e.calendarId) } };
+  }), [displayEvents, snapshot?.calendars, holidays, editor?.resourceId, editor?.recurrenceId]);
   const firstDay = prefs?.firstDay ?? 1, offset = (miniMonth.weekday % 7 - firstDay + 7) % 7;
   const miniStart = miniMonth.minus({ days: offset }), days = Array.from({ length: 42 }, (_, i) => miniStart.plus({ days: i }));
-  const today = DateTime.now().setZone(prefs?.timezone || 'local').toISODate();
-  const selectedEvents = filtered.filter(e => { const s = e.allDay ? e.start : DateTime.fromISO(e.start).setZone(prefs?.timezone || 'local').toISODate()!; const end = e.allDay ? DateTime.fromISO(e.end).minus({ days: 1 }).toISODate()! : DateTime.fromISO(e.end).minus({ milliseconds: 1 }).setZone(prefs?.timezone || 'local').toISODate()!; return s <= selected && end >= selected; });
+  const today = DateTime.now().setZone(prefs?.timezone || DEFAULT_TIMEZONE).toISODate();
+  const selectedEvents = filtered.filter(e => { const s = e.allDay ? e.start : DateTime.fromISO(e.start).setZone(prefs?.timezone || DEFAULT_TIMEZONE).toISODate()!; const end = e.allDay ? DateTime.fromISO(e.end).minus({ days: 1 }).toISODate()! : DateTime.fromISO(e.end).minus({ milliseconds: 1 }).setZone(prefs?.timezone || DEFAULT_TIMEZONE).toISODate()!; return s <= selected && end >= selected; });
   return <div className={`desktop-window ${window.__TAURI_INTERNALS__ ? 'native-chrome' : ''}`}><WindowChrome/><div className={`app-shell ${narrow && !sidebar ? 'sidebar-collapsed' : ''} ${narrow && sidebar ? 'sidebar-overlay' : ''}`}>
     {narrow && <div className="sidebar-reveal-edge" aria-label="侧栏感应区" tabIndex={0} onPointerEnter={() => setSidebar(true)} onFocus={() => setSidebar(true)}/>}
     {narrow && sidebar && <div className="sidebar-dismiss" onPointerEnter={() => { if (!settingsTab) setSidebar(false); }} onClick={() => setSidebar(false)}/>}
     <aside className={`sidebar ${prefs?.showSidebarEvents === false ? 'sidebar-events-hidden' : ''}`} aria-label="日历侧边栏" onPointerLeave={() => { if (narrow && !settingsTab) setSidebar(false); }}><div className="brand"><img className="app-mark" src={new URL('../../build/icon.png', import.meta.url).href} alt="时序日历"/><div><strong>时序</strong><span>留给生活的时间</span></div><IconButton label="设置" onClick={() => setSettingsTab('accounts')}><Settings2 size={12}/></IconButton></div>
       <button className="new-event-button" onClick={() => create()}><Plus size={18}/>新建日程<kbd>N</kbd></button>
-      <button className="today-link" onClick={() => go(today!)}><CalendarDays size={17}/><span>今天</span><span className="today-number">{DateTime.now().setZone(prefs?.timezone || 'local').day}</span></button>
+      <button className="today-link" onClick={() => go(today!)}><CalendarDays size={17}/><span>今天</span><span className="today-number">{DateTime.now().setZone(prefs?.timezone || DEFAULT_TIMEZONE).day}</span></button>
       <div className="sidebar-scroll">
       <section className="mini-calendar" aria-label="迷你日历"><div className="mini-header"><strong>{miniMonth.toFormat('yyyy年 M月')}</strong><IconButton label="迷你日历上个月" onClick={() => setMiniMonth(m => m.minus({ months: 1 }))}><ChevronLeft size={15}/></IconButton><IconButton label="迷你日历下个月" onClick={() => setMiniMonth(m => m.plus({ months: 1 }))}><ChevronRight size={15}/></IconButton></div><div className="mini-grid">{Array.from({ length: 7 }, (_, i) => <span className="mini-weekday" key={`w${i}`}>{['日','一','二','三','四','五','六'][(firstDay + i) % 7]}</span>)}{days.map(day => <button key={day.toISODate()} aria-label={day.toFormat('yyyy年M月d日')} aria-pressed={day.toISODate() === selected} className={`${day.month !== miniMonth.month ? 'other-month' : ''} ${day.toISODate() === today ? 'is-today' : ''} ${day.toISODate() === selected ? 'is-selected' : ''}`} onClick={() => go(day.toISODate()!)}>{day.day}</button>)}</div></section>
       <div className="sidebar-calendars"><div className="sidebar-section-heading"><h2>我的日历</h2><IconButton label="添加日历账户" onClick={() => setSettingsTab('accounts')}><Plus size={15}/></IconButton></div>
@@ -184,18 +186,17 @@ export function App() {
       {snapshot?.diagnostics.map(d => <div className="app-error" key={d}><TriangleAlert size={16}/>{d}</div>)}
       <UpdateNotice open={() => setSettingsTab('updates')}/>
       {!loading && snapshot?.accounts.length === 0 && <div className="onboarding-strip"><Cloud size={18}/><div><strong>从你的第一本日历开始</strong><span>连接 CalDAV 账户，日程即可在这里出现。</span></div><button onClick={() => setSettingsTab('accounts')}>连接账户<ChevronRight size={15}/></button></div>}
-      <div className="calendar-container" ref={calendarContainer}>{loading ? <div className="calendar-loading">正在读取本地日历…</div> : view === 'dayGridMonth' ? <MonthGrid now={now} month={month} firstDay={firstDay} timezone={prefs?.timezone || 'local'} selected={selected} timeFormat={prefs?.timeFormat || '24'} events={displayEvents} holidays={holidays} calendars={snapshot?.calendars || []} select={setSelected} create={create} open={openEvent} move={moveMonthEvent}/> : view === 'multiMonthYear' ? <YearGrid year={year} firstDay={firstDay} timezone={prefs?.timezone || 'local'} now={now} openMonth={openYearMonth} create={date => { openYearMonth(date); create(date); }}/> : <FullCalendar key={booted.current ? 'calendar' : 'initial'} ref={calendarRef} plugins={calendarPlugins} locale={zhCn} initialView={view} initialDate={selected} handleWindowResize={false} headerToolbar={false} height="100%" firstDay={firstDay} timeZone={prefs?.timezone || 'local'} events={fcEvents} selectable selectMirror editable nowIndicator dayMaxEvents={true} moreLinkText={n => `还有 ${n} 项`} allDayText="全天" noEventsContent="这段时间没有安排，留一点时间给自己。" eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: prefs?.timeFormat === '12' }} slotLabelFormat={{ hour: 'numeric', minute: '2-digit', hour12: prefs?.timeFormat === '12' }} slotMinTime="00:00:00" slotMaxTime="24:00:00" scrollTime="08:00:00" slotDuration="00:30:00" defaultTimedEventDuration={{ minutes: prefs?.duration || 60 }} weekends fixedWeekCount displayEventTime={false}
+      <div className="calendar-container" ref={calendarContainer}>{loading ? <div className="calendar-loading">正在读取本地日历…</div> : view === 'dayGridMonth' ? <MonthGrid now={now} month={month} firstDay={firstDay} timezone={prefs?.timezone || DEFAULT_TIMEZONE} selected={selected} timeFormat={prefs?.timeFormat || '24'} events={displayEvents} holidays={holidays} calendars={snapshot?.calendars || []} select={setSelected} create={create} open={openEvent} move={moveMonthEvent}/> : view === 'multiMonthYear' ? <YearGrid year={year} firstDay={firstDay} timezone={prefs?.timezone || DEFAULT_TIMEZONE} now={now} openMonth={openYearMonth} create={date => { openYearMonth(date); create(date); }}/> : <FullCalendar key={booted.current ? 'calendar' : 'initial'} ref={calendarRef} plugins={calendarPlugins} locale={zhCn} initialView={view} initialDate={selected} handleWindowResize={false} headerToolbar={false} height="100%" firstDay={firstDay} timeZone={prefs?.timezone || DEFAULT_TIMEZONE} events={fcEvents} selectable selectMirror editable nowIndicator dayMaxEvents={true} moreLinkText={n => `还有 ${n} 项`} allDayText="全天" noEventsContent="这段时间没有安排，留一点时间给自己。" eventTimeFormat={{ hour: '2-digit', minute: '2-digit', hour12: prefs?.timeFormat === '12' }} slotLabelFormat={{ hour: 'numeric', minute: '2-digit', hour12: prefs?.timeFormat === '12' }} slotMinTime="00:00:00" slotMaxTime="24:00:00" scrollTime="08:00:00" slotDuration="00:30:00" defaultTimedEventDuration={{ minutes: prefs?.duration || 60 }} weekends fixedWeekCount displayEventTime={false}
         datesSet={datesSet}
         dateClick={info => { if (info.jsEvent.detail === 2) { setSelected(info.dateStr.slice(0, 10)); create(info.dateStr, undefined, false, info.dayEl.getBoundingClientRect()); } }}
         select={info => { if (info.allDay && Date.parse(info.endStr) - Date.parse(info.startStr) <= 86400000) return; create(info.startStr, info.endStr, info.allDay); calendarRef.current?.getApi().unselect(); }}
         eventClick={info => { const event = events.find(e => e.id === info.event.id); if (event) openEvent(event); }}
-        eventDrop={moveEvent} eventResize={moveEvent} eventDidMount={info => info.el.style.setProperty('--event-color', info.event.extendedProps.color)}
+        eventDrop={moveEvent} eventResize={moveEvent} eventDidMount={info => { info.el.style.setProperty('--event-color', info.event.extendedProps.color); info.el.style.setProperty('--event-on-color', info.event.extendedProps.onColor); }}
         dayCellClassNames={[]}
-        dayCellContent={info => info.view.type === 'dayGridMonth' ? <MonthDate date={info.date} timezone={prefs?.timezone || 'local'} dayText={info.dayNumberText}/> : info.dayNumberText.replace('日', '')} dayHeaderFormat={view === 'dayGridMonth' ? { weekday: 'short' } : { weekday: 'short', month: 'numeric', day: 'numeric' }} eventContent={info => <div className="calendar-event-content" title={`${info.event.title}${info.event.extendedProps.location ? ` · ${info.event.extendedProps.location}` : ''}`}><EventMark allDay={info.event.allDay} holiday={!!info.event.extendedProps.holiday}/><span className="event-name">{info.event.title}</span>{info.event.extendedProps.pending && <span className="event-unsynced" title="待同步">·</span>}{info.event.extendedProps.recurring && <Repeat2 size={10}/>}</div>}
+        dayCellContent={info => info.view.type === 'dayGridMonth' ? <MonthDate date={info.date} timezone={prefs?.timezone || DEFAULT_TIMEZONE} dayText={info.dayNumberText}/> : info.dayNumberText.replace('日', '')} dayHeaderFormat={view === 'dayGridMonth' ? { weekday: 'short' } : { weekday: 'short', month: 'numeric', day: 'numeric' }} eventContent={info => <div className="calendar-event-content" title={`${info.event.title}${info.event.extendedProps.location ? ` · ${info.event.extendedProps.location}` : ''}`}><EventMark allDay={info.event.allDay} holiday={!!info.event.extendedProps.holiday}/><span className="event-name">{info.event.title}</span>{info.event.extendedProps.pending && <span className="event-unsynced" title="待同步">·</span>}{info.event.extendedProps.recurring && <Repeat2 size={10}/>}</div>}
       />}</div>
     </main>
     {notice && <div className="toast" role="status"><CircleCheck size={17}/>{notice}</div>}
-    {editor && snapshot && <Editor key={`${editor.resourceId ?? 'new'}:${editor.start}`} initial={editor} anchor={editorAnchor} duration={snapshot.settings.duration} changed={updateDraft} calendars={snapshot.calendars} close={() => { setEditor(null); setDraft(null); }} saved={() => { setNotice('日程已保存在本地'); void refresh(); }}/>} {settingsTab && snapshot && <SettingsPanel snapshot={snapshot} close={() => setSettingsTab(null)} refresh={() => void refresh()} initialTab={settingsTab}/>}
-    <datalist id="timezones">{['Asia/Shanghai','Asia/Hong_Kong','Asia/Tokyo','Asia/Singapore','Europe/London','Europe/Berlin','America/New_York','America/Los_Angeles','Australia/Sydney','UTC'].map(t => <option key={t} value={t}/>)}</datalist>
+    {editor && snapshot && <Editor key={`${editor.resourceId ?? 'new'}:${editor.start}`} initial={editor} displayTimezone={snapshot.settings.timezone} anchor={editorAnchor} duration={snapshot.settings.duration} changed={updateDraft} calendars={snapshot.calendars} close={() => { setEditor(null); setDraft(null); }} saved={() => { setNotice('日程已保存在本地'); void refresh(); }}/>} {settingsTab && snapshot && <SettingsPanel snapshot={snapshot} close={() => setSettingsTab(null)} refresh={() => void refresh()} initialTab={settingsTab}/>}
   </div></div>;
 }

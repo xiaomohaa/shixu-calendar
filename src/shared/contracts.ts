@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { DesktopState, UpdateState } from './updates';
+export const DEFAULT_TIMEZONE = 'Asia/Shanghai';
 
 export const accountInput = z.object({
   id: z.string().optional(), name: z.string().trim().min(1).max(100),
@@ -23,7 +24,7 @@ export const settingsSchema = z.object({
   silentStartup: z.boolean().default(false),
 });
 export type Settings = z.infer<typeof settingsSchema>;
-export const defaultSettings: Settings = { theme: 'system', view: 'dayGridMonth', firstDay: 1, duration: 60, reminder: 15, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, autoSync: true, interval: 10, defaultCalendar: '', timeFormat: '24', dateFormat: 'chinese', autoUpdateCheck: true, closeToTray: true, boldText: false, showAlmanac: true, showSidebarEvents: true, silentStartup: false };
+export const defaultSettings: Settings = { theme: 'system', view: 'dayGridMonth', firstDay: 1, duration: 60, reminder: 15, timezone: DEFAULT_TIMEZONE, autoSync: true, interval: 10, defaultCalendar: '', timeFormat: '24', dateFormat: 'chinese', autoUpdateCheck: true, closeToTray: true, boldText: false, showAlmanac: true, showSidebarEvents: true, silentStartup: false };
 export const eventInput = z.object({
   resourceId: z.string().optional(), calendarId: z.string().min(1), uid: z.string().optional(),
   title: z.string().trim().min(1, '请输入日程标题').max(500), start: z.string().min(10), end: z.string().min(10),

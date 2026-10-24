@@ -1,0 +1,17 @@
+/* Day and week views encode duration with a filled time block. Month rows keep their short bars. */
+.desktop-window .app-shell .fc .fc-timegrid-event.event-timed {
+  background:color-mix(in oklab,var(--event-color) 23%,var(--bg))!important;
+  border:1px solid color-mix(in oklab,var(--event-color) 15%,transparent)!important;
+  border-radius:5px;
+  padding:3px 5px 3px 10px;
+  color:var(--event-text)!important;
+  box-shadow:inset 0 1px 1px var(--glass-edge);
+}
+.desktop-window .app-shell .fc .fc-timegrid-event.event-timed::before { content:''; position:absolute; left:3px; top:3px; bottom:3px; width:3px; border-radius:2px; background:var(--event-color); pointer-events:none; }
+.desktop-window .app-shell .fc .fc-timegrid-event.event-timed .event-color-bar { display:none; }
+.desktop-window .app-shell .fc .fc-timegrid-event.event-timed .calendar-event-content { height:100%; gap:2px; }
+.desktop-window .app-shell .fc .fc-timegrid-event.event-timed .event-name { font-size:10px; line-height:1.4; white-space:normal; color:inherit; }
+.desktop-window .app-shell .fc .fc-timegrid-event.event-timed:hover { background:color-mix(in oklab,var(--event-color) 32%,var(--bg))!important; }
+.desktop-window .app-shell .fc .fc-timegrid-event.event-timed.event-selected { background:var(--event-color)!important; color:var(--event-on-color)!important; border-color:var(--event-color)!important; }
+.desktop-window .app-shell .fc .fc-timegrid-event.event-timed.event-selected .calendar-event-content { color:inherit; }
+.desktop-window .app-shell .fc .fc-timegrid-event.event-timed.event-selected::before { background:var(--event-on-color); opacity:.8; }
