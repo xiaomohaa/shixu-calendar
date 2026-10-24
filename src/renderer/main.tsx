@@ -9,4 +9,5 @@ import './native-calendar.css';
 import './month.css';
 import './display.css';
 import './reference-calendar.css';
+import './editor-popover.css';
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);

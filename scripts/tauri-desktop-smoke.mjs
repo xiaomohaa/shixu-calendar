@@ -33,6 +33,7 @@ try {
   await page.waitForFunction(() => document.documentElement.dataset.boldText === 'true');
   await page.getByRole('checkbox', { name: '在左侧显示日程', exact: true }).uncheck();
   await page.waitForFunction(() => !document.querySelector('.sidebar-events'));
+  if (await page.locator('.day-summary>.sidebar-section-heading').count()) throw new Error('Hidden sidebar events still display date/count');
   await page.getByRole('checkbox', { name: '显示黄历', exact: true }).uncheck();
   await page.waitForFunction(() => !document.querySelector('.almanac'));
   if ((await page.evaluate(() => window.shixu.snapshot())).settings.showAlmanac !== false) throw new Error('Almanac preference was not persisted');
@@ -57,7 +58,7 @@ try {
   if (restoredWeight !== initialWeight) throw new Error('Disabling bold did not restore the original font weight');
   await page.getByRole('button', { name: '关闭面板', exact: true }).click();
   const detail = await page.evaluate(() => ({
-    sidebar: getComputedStyle(document.querySelector('.sidebar-footer button')).fontSize,
+    sidebar: getComputedStyle(document.querySelector('.brand button')).fontSize,
     views: [...document.querySelectorAll('.view-switch button')].map(el => getComputedStyle(el).fontSize),
     today: getComputedStyle(document.querySelector('.period-navigation .today-button')).fontSize,
     lunar: getComputedStyle(document.querySelector('.month-cell .lunar-date')).fontSize,
@@ -66,7 +67,7 @@ try {
     panel: getComputedStyle(document.querySelector('.sidebar')).backgroundColor,
     glass: getComputedStyle(document.querySelector('.view-switch')).backdropFilter,
   }));
-  if (detail.sidebar !== '10px' || detail.today !== '10px' || detail.views.some(font => font !== '10px') || detail.lunar !== '14px' || detail.solar !== '14px' || detail.cap !== detail.panel || !detail.glass.includes('blur')) throw new Error(`Requested typography/glass/sidebar cap mismatch: ${JSON.stringify(detail)}`);
+  if (detail.sidebar !== '10px' || detail.today !== '10px' || detail.views.some(font => font !== '10px') || detail.lunar !== '12px' || detail.solar !== '12px' || detail.cap !== detail.panel || !detail.glass.includes('blur')) throw new Error(`Requested typography/glass/sidebar cap mismatch: ${JSON.stringify(detail)}`);
   if ((await page.locator('.window-drag-region').textContent()).trim()) throw new Error('Titlebar label was not removed');
   await page.getByRole('button', { name: '年', exact: true }).click();
   await page.locator('.fc-multimonth').waitFor();
@@ -88,8 +89,12 @@ try {
     heading: getComputedStyle(document.querySelector('.calendar-heading')).backgroundColor,
     radius: getComputedStyle(document.querySelector('.desktop-window')).borderTopLeftRadius,
   }));
-  if (chromeStyle.top !== chromeStyle.toolbar || chromeStyle.top !== chromeStyle.heading || chromeStyle.radius !== '24px') throw new Error('Window surface color or corner radius mismatch');
+  if (chromeStyle.top !== chromeStyle.toolbar || chromeStyle.top !== chromeStyle.heading || chromeStyle.radius !== '8px') throw new Error('Window surface color or corner radius mismatch');
   if (await page.getByRole('button', { name: /展开侧边栏|收起侧边栏|打开设置/ }).count()) throw new Error('Removed toolbar controls are still present');
+  if (await page.locator('.status-bar,.sidebar-footer').count()) throw new Error('Removed footer status is still rendered');
+  if (await page.locator('.sidebar .calendar-toggle input').count() && await page.locator('.sidebar .calendar-toggle input').first().evaluate(el => getComputedStyle(el).width) !== '10px') throw new Error('Sidebar checkbox size mismatch');
+  const miniPosition = await page.locator('.mini-calendar').boundingBox(), summaryPosition = await page.locator('.day-summary').boundingBox();
+  if (miniPosition.y < summaryPosition.y) throw new Error('Mini calendar is not at bottom of sidebar');
   const normalFonts = await page.locator('.month-cell .solar-date').first().evaluate(el => getComputedStyle(el).fontSize);
   await page.getByRole('button', { name: '最大化窗口', exact: true }).click();
   await page.waitForFunction(() => document.documentElement.dataset.maximized === 'true');

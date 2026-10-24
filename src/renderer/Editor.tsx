@@ -3,8 +3,10 @@ import { DateTime } from 'luxon';
 import { CalendarDays, Clock3, MapPin, AlignLeft, Repeat2, Bell, Trash2, Check } from 'lucide-react';
 import type { Calendar, EventInput } from '../shared/contracts';
 import { Busy, Field, Panel } from './components';
+import type { PanelAnchor } from './popoverLayout';
+import { newEventTime } from '../calendar/newEventTime';
 
-export function Editor({ initial, calendars, close, saved }: { initial: EventInput; calendars: Calendar[]; close: () => void; saved: () => void }) {
+export function Editor({ initial, calendars, close, saved, anchor, duration = 60 }: { initial: EventInput; calendars: Calendar[]; close: () => void; saved: () => void; anchor?: PanelAnchor; duration?: number }) {
   const [form, setForm] = useState(initial), [busy, setBusy] = useState(false), [error, setError] = useState(''), [confirmDelete, setConfirmDelete] = useState(false);
   const dirty = useRef(false);
   const set = <K extends keyof EventInput>(key: K, value: EventInput[K]) => { dirty.current = true; setForm(f => ({ ...f, [key]: value })); };
@@ -13,13 +15,13 @@ export function Editor({ initial, calendars, close, saved }: { initial: EventInp
   const display = (value: string) => form.allDay ? value.slice(0, 10) : DateTime.fromISO(value, { zone: form.timezone }).toFormat("yyyy-MM-dd'T'HH:mm");
   const act = async (fn: () => Promise<void>) => { setBusy(true); setError(''); try { await fn(); dirty.current = false; saved(); close(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
   const scope = async (value: 'series' | 'instance') => { if (!form.resourceId) return; setBusy(true); try { const input = await window.shixu.eventDetail(form.resourceId, value, form.recurrenceId); setForm(input); dirty.current = false; setError(''); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
-  return <Panel title={form.resourceId ? '编辑日程' : '新建日程'} subtitle="让每一段时间，都有自己的安排。" close={dismiss}>
+  return <Panel title={form.resourceId ? '编辑日程' : '新建日程'} floating anchor={anchor} close={dismiss}>
     <form className="editor-body" onSubmit={e => { e.preventDefault(); void act(() => window.shixu.saveEvent(form)); }}>
       <input className="event-title-input" aria-label="日程标题" placeholder="添加标题" autoFocus required maxLength={500} value={form.title} onChange={e => set('title', e.target.value)}/>
       {form.resourceId && (form.rrule || form.recurrenceId) && <Field label="修改范围" hint="切换范围会重新载入原始内容。系列起始时间不可在此平移。"><select disabled={busy} value={form.scope} onChange={e => void scope(e.target.value as 'series' | 'instance')}><option value="instance">仅此一次</option><option value="series">整个重复系列</option></select></Field>}
       <div className="editor-section"><CalendarDays size={18}/><div className="editor-fields"><Field label="所属日历"><select aria-label="所属日历" disabled={!!form.resourceId} value={form.calendarId} required onChange={e => set('calendarId', e.target.value)}><option value="" disabled>选择日历</option>{calendars.filter(c => !c.readOnly).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field><label className="check-row"><input type="checkbox" checked={form.allDay} onChange={e => {
         const allDay = e.target.checked;
-        setForm(f => ({ ...f, allDay, start: allDay ? display(f.start).slice(0, 10) : `${f.start.slice(0, 10)}T09:00`, end: allDay ? DateTime.fromISO(display(f.start).slice(0, 10)).plus({ days: 1 }).toISODate()! : `${f.start.slice(0, 10)}T10:00` })); dirty.current = true;
+        setForm(f => { const start = newEventTime(display(f.start).slice(0, 10), f.timezone, allDay); return { ...f, allDay, start: allDay ? start.toISODate()! : start.toISO()!, end: allDay ? start.plus({ days: 1 }).toISODate()! : start.plus({ minutes: duration }).toISO()! }; }); dirty.current = true;
       }}/>全天日程</label></div></div>
       <div className="editor-section"><Clock3 size={18}/><div className="editor-fields"><Field label="开始"><input aria-label="开始时间" type={form.allDay ? 'date' : 'datetime-local'} required value={display(form.start)} onChange={e => set('start', e.target.value)}/></Field><Field label={form.allDay ? '结束（不包含此日期）' : '结束'}><input aria-label="结束时间" type={form.allDay ? 'date' : 'datetime-local'} required value={display(form.end)} onChange={e => set('end', e.target.value)}/></Field>{!form.allDay && <Field label="日程时区" hint="修改时区会按新时区解释输入的时间。"><input required list="timezones" value={form.timezone} onChange={e => { const start = display(form.start), end = display(form.end); setForm(f => ({ ...f, timezone: e.target.value, start, end })); dirty.current = true; }}/></Field>}</div></div>
       <div className="editor-section"><MapPin size={18}/><Field label="地点"><input placeholder="添加地点或会议链接" value={form.location} onChange={e => set('location', e.target.value)}/></Field></div>

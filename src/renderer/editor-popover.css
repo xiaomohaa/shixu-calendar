@@ -1,0 +1,26 @@
+.panel-backdrop.editor-backdrop { display:block; background:transparent; padding:12px; animation:none; }
+.panel.floating-editor { position:fixed; width:400px; max-width:calc(100vw - 24px); height:auto; max-height:min(720px,calc(100dvh - 24px)); border-radius:20px; border:1px solid color-mix(in oklab,var(--field) 85%,var(--line)); background:color-mix(in oklab,var(--bg) 88%,transparent); backdrop-filter:blur(26px) saturate(1.5); box-shadow:inset 0 1px 1px var(--field),0 12px 40px color-mix(in oklab,var(--text) 20%,transparent); }
+.floating-editor .panel-header { padding:14px 16px 12px; align-items:center; border-color:color-mix(in oklab,var(--line) 55%,transparent); flex:none; }
+.floating-editor .panel-header h2 { font-size:14px; }
+.floating-editor .panel-header .icon-button { width:22px; height:22px; padding:3px; }
+.floating-editor .panel-header svg { width:13px; height:13px; }
+.floating-editor .editor-body { padding:12px 16px 0; scrollbar-width:thin; border-radius:0 0 20px 20px; }
+.floating-editor .event-title-input { padding:9px 10px; margin-bottom:10px; font-size:20px; background:color-mix(in oklab,var(--panel) 35%,transparent); border-radius:10px; }
+.floating-editor .editor-section { gap:10px; padding:8px 0; border-color:color-mix(in oklab,var(--line) 60%,transparent); }
+.floating-editor .editor-section>svg { width:14px; height:14px; margin-top:5px; }
+.floating-editor .editor-fields { display:flex; flex-direction:column; gap:8px; }
+.floating-editor .field { display:grid; grid-template-columns:64px minmax(0,1fr); align-items:center; gap:4px 8px; margin-bottom:0; }
+.floating-editor .field>small { grid-column:2; }
+.floating-editor .field>span { font-size:11px; }
+.floating-editor :is(input,select,textarea) { padding:6px 8px; font-size:11px; background:color-mix(in oklab,var(--field) 60%,transparent); border-radius:8px; }
+.floating-editor .check-row { font-size:11px; }
+.floating-editor .form-hint { font-size:10px; margin:8px 0; }
+.floating-editor .panel-footer { padding:10px 0; margin-top:10px; background:color-mix(in oklab,var(--bg) 92%,transparent); backdrop-filter:blur(12px); }
+.floating-editor .panel-footer button { font-size:11px; padding:6px 10px; }
+.floating-editor::before { position:absolute; top:var(--arrow-top); width:10px; height:10px; background:color-mix(in oklab,var(--bg) 92%,transparent); transform:translateY(-50%) rotate(45deg); }
+.floating-editor[data-side="right"]::before { content:''; left:-6px; border-left:1px solid var(--line); border-bottom:1px solid var(--line); }
+.floating-editor[data-side="left"]::before { content:''; right:-6px; border-right:1px solid var(--line); border-top:1px solid var(--line); }
+@media (max-height:520px) {
+  .floating-editor .panel-header { padding:8px 12px; }
+  .floating-editor .editor-body { padding:8px 12px 0; }
+}
