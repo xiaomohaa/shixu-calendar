@@ -33,7 +33,7 @@ await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
 const data = resolve('.smoke-data', `tauri-updater-${Date.now()}`);
 await mkdir(data, { recursive: true });
 const port = 9228;
-const app = spawn(resolve('src-tauri/target/release/shixu-calendar.exe'), [], {
+const app = spawn(resolve(process.env.SHIXU_TAURI_TEST_EXE || 'src-tauri/target/release/shixu-calendar.exe'), [], {
   env: { ...process.env, SHIXU_TAURI_TEST_DATA_DIR: data,
     SHIXU_TAURI_TEST_UPDATE_URL: `http://127.0.0.1:${server.address().port}/latest.json`,
     WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}` },

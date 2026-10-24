@@ -67,6 +67,10 @@ struct Settings {
     bold_text: bool,
     #[serde(default = "default_show_almanac")]
     show_almanac: bool,
+    #[serde(default = "default_show_almanac")]
+    show_sidebar_events: bool,
+    #[serde(default)]
+    silent_startup: bool,
 }
 
 fn default_show_almanac() -> bool {
@@ -78,7 +82,7 @@ impl Settings {
         if !matches!(self.theme.as_str(), "system" | "light" | "dark")
             || !matches!(
                 self.view.as_str(),
-                "dayGridMonth" | "timeGridWeek" | "timeGridDay" | "listMonth"
+                "dayGridMonth" | "timeGridWeek" | "timeGridDay" | "multiMonthYear" | "listMonth"
             )
             || !(0..=6).contains(&self.first_day)
             || !(5..=1440).contains(&self.duration)
@@ -275,6 +279,19 @@ impl Store {
         )
         .map_err(|_| "更新订阅状态失败")?;
         tx.commit().map_err(|_| "提交订阅同步失败".into())
+    }
+
+    pub fn silent_startup(&self) -> bool {
+        self.db
+            .query_row(
+                "SELECT value FROM settings WHERE key='preferences'",
+                [],
+                |row| row.get::<_, String>(0),
+            )
+            .ok()
+            .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+            .and_then(|value| value.get("silentStartup").and_then(Value::as_bool))
+            .unwrap_or(false)
     }
 
     pub fn close_to_tray(&self) -> bool {
@@ -1163,6 +1180,21 @@ mod tests {
             "timeFormat":"24", "dateFormat":"chinese",
             "autoUpdateCheck":true, "closeToTray":true
         });
+        copied.set_settings(settings.clone()).unwrap();
+        assert!(!copied.silent_startup());
+        let old_settings = copied.snapshot(json!({})).unwrap();
+        assert_eq!(old_settings["settings"]["showSidebarEvents"], true);
+        assert_eq!(old_settings["settings"]["silentStartup"], false);
+        let mut new_settings = settings.clone();
+        new_settings["silentStartup"] = json!(true);
+        new_settings["showSidebarEvents"] = json!(false);
+        new_settings["view"] = json!("multiMonthYear");
+        copied.set_settings(new_settings).unwrap();
+        assert!(copied.silent_startup());
+        assert_eq!(
+            copied.snapshot(json!({})).unwrap()["settings"]["view"],
+            "multiMonthYear"
+        );
         copied.set_settings(settings.clone()).unwrap();
         settings["timezone"] = json!("No/Such_Zone");
         assert!(copied.set_settings(settings).is_err());

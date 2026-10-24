@@ -840,6 +840,7 @@ pub fn run() {
                         .map_err(std::io::Error::other)?;
                 }
             }
+            let silent_startup = store.silent_startup();
             app.manage(Mutex::new(store));
             app.manage(SyncTracker::default());
             app.manage(updates::Updates::new(
@@ -940,10 +941,10 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
-            if std::env::args_os().any(|arg| arg == "--hidden") {
-                if let Some(window) = app.get_webview_window("main") {
-                    window.hide()?;
-                }
+            // Windows start hidden; reveal only after preferences and the tray are ready.
+            // A missing tray is a setup error, so a silent launch cannot become unreachable.
+            if !silent_startup && !std::env::args_os().any(|arg| arg == "--hidden") {
+                show_main(app.handle());
             }
             if cfg!(debug_assertions) {
                 app.handle().plugin(

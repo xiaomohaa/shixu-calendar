@@ -13,6 +13,7 @@
       "minWidth": 480,
       "minHeight": 360,
       "resizable": true,
+      "visible": false,
       "decorations": false,
       "transparent": true,
       "shadow": true

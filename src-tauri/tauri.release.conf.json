@@ -1,6 +1,6 @@
 {
   "productName": "时序日历 2",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "identifier": "cn.shixu.calendar.tauri",
   "build": {
     "frontendDist": "../dist",
@@ -14,6 +14,7 @@
       "minWidth": 480,
       "minHeight": 360,
       "resizable": true,
+      "visible": false,
       "decorations": false,
       "transparent": true,
       "shadow": true

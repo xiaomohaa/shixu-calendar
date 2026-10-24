@@ -13,6 +13,7 @@
         "width": 640,
         "height": 420,
         "resizable": true,
+      "visible": false,
         "fullscreen": false
       }
     ],

@@ -17,7 +17,7 @@ export function WindowChrome() {
   }, []);
   if (!window.__TAURI_INTERNALS__) return null;
   return <div className="window-chrome">
-    <div className="window-drag-region" data-tauri-drag-region><span data-tauri-drag-region>时序日历</span></div>
+    <div className="window-drag-region" data-tauri-drag-region/>
     <div className="window-actions">
       <button aria-label="最小化窗口" title="最小化" onClick={() => void getCurrentWindow().minimize()}><Minus size={13}/></button>
       <button aria-label={maximized ? '还原窗口' : '最大化窗口'} title={maximized ? '还原' : '最大化'} onClick={() => void getCurrentWindow().toggleMaximize()}>{maximized ? <Copy size={12}/> : <Square size={12}/>}</button>

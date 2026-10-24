@@ -5,7 +5,8 @@ html, body, #root { background:transparent; }
 .desktop-window .app-shell { height:100%; flex:1; min-height:0; }
 .desktop-window.native-chrome .app-shell { height:calc(100% - 26px); }
 :root[data-maximized="true"] .desktop-window { border-radius:0; clip-path:none; }
-.window-chrome { height:26px; min-height:26px; display:flex; align-items:stretch; background:var(--bg); color:var(--muted); user-select:none; }
+.window-chrome { height:26px; min-height:26px; display:flex; align-items:stretch; background:var(--bg); color:var(--muted); user-select:none; position:relative; }
+.window-chrome::before { content:''; position:absolute; inset:0 auto 0 0; width:250px; background:var(--panel); pointer-events:none; }
 .window-drag-region { flex:1; min-width:0; padding-left:18px; display:flex; align-items:center; app-region:drag; }
 .window-drag-region span { font-size:10px; pointer-events:none; }
 .window-actions { display:flex; flex:none; }
@@ -15,7 +16,10 @@ html, body, #root { background:transparent; }
 .app-shell .toolbar, .app-shell .calendar-heading, .month-weekdays { background:var(--bg); }
 .app-shell .toolbar { height:44px; min-height:44px; padding:0 18px; }
 .app-shell .toolbar-left .icon-button { width:32px; height:32px; border:1px solid var(--line); background:var(--bg); }
-.app-shell .view-switch button, .app-shell .period-navigation .today-button { font-size:14px; }
+.app-shell .view-switch button, .app-shell .period-navigation .today-button { font-size:10px; }
+.app-shell .view-switch { background:color-mix(in oklab,var(--panel) 45%,transparent); border:1px solid color-mix(in oklab,var(--line) 65%,transparent); backdrop-filter:blur(14px) saturate(1.2); box-shadow:inset 0 1px 1px color-mix(in oklab,var(--field) 85%,transparent),0 2px 6px color-mix(in oklab,var(--text) 5%,transparent); }
+.app-shell .view-switch button.active { background:color-mix(in oklab,var(--field) 72%,transparent); box-shadow:inset 0 1px 1px var(--field),0 1px 3px color-mix(in oklab,var(--text) 8%,transparent); }
+.app-shell .view-switch .list-view-button { min-width:26px; width:26px; padding:4px; }
 .app-shell .view-switch button { min-width:48px; padding:4px 12px; }
 .app-shell .calendar-heading { padding:12px 22px 10px; min-height:70px; }
 .app-shell .calendar-heading h1 { font-size:26px; line-height:1.15; letter-spacing:0; }
@@ -25,14 +29,15 @@ html, body, #root { background:transparent; }
 .app-shell .month-weekdays span { font-size:14px; padding:7px 4px; }
 .app-shell .sidebar { padding:14px 14px 0; }
 .sidebar .brand { padding:0 7px 18px; }
-.sidebar .brand strong { font-size:16px; }
+.sidebar .brand strong { font-size:10px; }
 .sidebar .calendar-toggle span, .sidebar .mini-header strong, .sidebar .mini-grid button,
-.sidebar .sidebar-section-heading h2, .sidebar .summary-event span, .sidebar .sidebar-footer button { font-size:14px; }
-.sidebar .mini-weekday { font-size:12px; }
+.sidebar .sidebar-section-heading h2, .sidebar .summary-event span, .sidebar .sidebar-footer button { font-size:10px; }
+.sidebar :is(span, strong, small, p, h2, h3, h4, button, label, dt, dd) { font-size:10px; }
+.sidebar .mini-weekday { font-size:10px; }
 .sidebar .calendar-toggle { padding:7px 8px; }
-.sidebar .account-label { font-size:12px; }
+.sidebar .account-label { font-size:10px; }
 .sidebar .sidebar-footer { margin:0 -14px; padding:10px 14px; }
-.sidebar .lunar-heading strong { font-size:14px; }
+.sidebar .lunar-heading strong { font-size:10px; }
 .sidebar-scroll { scrollbar-width:auto; scrollbar-color:auto; }
 .sidebar-scroll::-webkit-scrollbar { width:8px; }
 .sidebar-scroll::-webkit-scrollbar-track { background:transparent; }
@@ -47,14 +52,33 @@ html, body, #root { background:transparent; }
 .app-shell .month-day-button, .app-shell .month-day-button .month-date-content { height:var(--date-header-height); min-height:0; }
 .app-shell .month-day-button .month-date-content { padding:0; display:block; }
 .app-shell .month-day-button .solar-date { left:auto; right:4px; top:1px; transform:none; width:auto; min-width:22px; height:22px; font-size:14px; line-height:20px; font-weight:500; }
-.app-shell .month-day-button .lunar-date { left:4px; top:2px; font-size:12px; line-height:20px; max-width:calc(100% - 31px); font-weight:400; }
+.app-shell .month-day-button .lunar-date { left:4px; top:2px; font-size:14px; line-height:20px; max-width:calc(100% - 31px); font-weight:400; }
 .app-shell .month-cell.is-today .solar-date { padding:0 3px; border-radius:50%; min-width:22px; }
 .app-shell .month-event { font-size:11px; }
+.app-shell .month-event.event-timed { display:flex; width:100%; gap:4px; justify-content:flex-start; height:18px; line-height:16px; padding:1px 4px; border:0; border-radius:0; background:transparent; color:var(--text); }
+.app-shell .month-event.event-timed:hover { background:var(--hover); }
+.app-shell .event-timed .event-color-dot { width:3px; height:12px; border:0; border-radius:2px; background:var(--event-color); flex-shrink:0; }
+.month-span .month-event { width:100%; }
+:root { --calendar-line:oklch(92% .003 65); }
+:root[data-theme=dark] { --calendar-line:oklch(30% .004 60); }
+.month-cell, .month-weekdays { border-color:var(--calendar-line); }
+.app-shell .fc { --fc-border-color:var(--calendar-line); }
+.app-shell .fc .fc-timegrid-event.event-timed, .app-shell .fc .fc-daygrid-event.event-timed { background:transparent!important; border:0!important; box-shadow:none; color:var(--text); }
+.app-shell .fc .event-timed .calendar-event-content::before { content:''; width:3px; height:12px; border-radius:2px; flex-shrink:0; background:var(--event-color); }
+.app-shell .fc .fc-list-event-time { display:none; }
+.app-shell .fc .fc-daygrid-day-number { font-size:14px; }
+.app-shell .fc .fc-multimonth-title { font-size:14px; }
+.app-shell .fc .fc-multimonth { background:var(--bg); }
 .app-shell .event-capsule { height:18px; line-height:16px; padding:1px 4px; }
 .app-shell .month-event-time { font-size:9px; }
 .app-shell .month-more { font-size:11px; }
 .app-shell .month-event-list { gap:2px; padding-left:3px; padding-right:3px; }
+@media (min-width:901px) and (max-width:1150px) {
+  .window-chrome::before { width:220px; }
+}
 @media (max-width:900px) {
+  .window-chrome::before { width:0; }
+  .desktop-window:has(.sidebar-overlay) .window-chrome::before { width:240px; }
   .app-shell .toolbar { padding:0 12px; }
   .app-shell .calendar-heading { padding-left:14px; padding-right:14px; }
   .sidebar .brand { padding-bottom:12px; }

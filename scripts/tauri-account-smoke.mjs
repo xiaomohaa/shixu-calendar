@@ -162,6 +162,11 @@ try {
   if (await page.locator('.month-cell .month-event').filter({ hasText: '连续跨天胶囊' }).count()) throw new Error('Multi-day capsule was duplicated in individual day cells');
   const past = page.locator('.month-span').filter({ has: page.getByRole('button', { name: /已结束跨天胶囊/ }) }).locator('button');
   if (await past.evaluate(el => Number(getComputedStyle(el).opacity)) >= .6) throw new Error('Ended event was not faded');
+  const timed = page.locator('.month-event.event-timed').first();
+  const timedStyle = await timed.evaluate(el => ({ background: getComputedStyle(el).backgroundColor, marker: getComputedStyle(el.querySelector('.event-color-dot')).width, markerHeight: getComputedStyle(el.querySelector('.event-color-dot')).height }));
+  if (timedStyle.background !== 'rgba(0, 0, 0, 0)' || timedStyle.marker !== '3px' || timedStyle.markerHeight !== '12px') throw new Error(`Timed event is not title and a left bar: ${JSON.stringify(timedStyle)}`);
+  if (await page.locator('.month-event-time').count()) throw new Error('Visible event time was not removed');
+  if (await span.locator('.event-capsule.event-all-day').count() !== 1) throw new Error('All-day capsule was lost');
   await page.screenshot({ path: '.smoke-data/month-display.png' });
   const fixedFonts = await page.evaluate(() => ({
     solar: getComputedStyle(document.querySelector('.solar-date')).fontSize,

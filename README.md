@@ -1,6 +1,12 @@
 # 时序日历
 
-> 换机接续开发：[Tauri 2 迁移计划](docs/TAURI_MIGRATION_PLAN.md)。`edit` 分支当前保存计划，程序仍为 Electron 1.3.0，原生迁移尚未实施。
+当前正式版使用 **Tauri 2 + Rust + React**。下载 [Windows x64 安装包](https://github.com/xiaomohaa/shixu-calendar/releases/latest)。现有 Tauri 2.x 用户可在“设置 → 关于与更新”中升级；Electron 1.x 用户请手动安装 Tauri 版本。旧版数据会复制迁移，原数据库保留。
+
+2.0.3 新增“设置 → 启动与后台 → 静默启动”，启用后下次启动进入系统托盘，可通过托盘图标或再次启动唤出窗口；“设置 → 显示设置 → 在左侧显示日程”可隐藏侧栏日程。日/周/月/年和日程列表均可使用，全天日程显示胶囊，非全天日程显示短色条和标题。完整变化见 [2.0.3 发布说明](docs/RELEASE_NOTES_2.0.3.md)。
+
+下面保留 Electron 1.3.0 的历史开发与打包说明。Tauri 的构建命令见 [迁移计划](docs/TAURI_MIGRATION_PLAN.md) 和 package.json 中的 `tauri:*` 脚本。
+
+> 历史接续开发记录：[Tauri 2 迁移计划](docs/TAURI_MIGRATION_PLAN.md)。`edit` 分支当前保存计划，程序仍为 Electron 1.3.0，原生迁移尚未实施。
 
 运行于 **Windows 10/11 x64** 的个人 CalDAV 客户端。Electron + React + TypeScript + Vite；中文界面，支持浅色、深色与系统主题。首次运行没有示例账户或演示日程。
 

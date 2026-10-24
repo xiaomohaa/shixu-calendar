@@ -11,7 +11,7 @@ export type AccountInput = z.infer<typeof accountInput>;
 export interface Account extends Omit<AccountInput, 'password' | 'id'> { id: string; lastSync: string | null; error: string | null; subscription?: boolean }
 export interface Calendar { id: string; accountId: string; url: string; name: string; color: string; visible: boolean; readOnly: boolean }
 export const settingsSchema = z.object({
-  theme: z.enum(['system', 'light', 'dark']), view: z.enum(['dayGridMonth', 'timeGridWeek', 'timeGridDay', 'listMonth']),
+  theme: z.enum(['system', 'light', 'dark']), view: z.enum(['dayGridMonth', 'timeGridWeek', 'timeGridDay', 'multiMonthYear', 'listMonth']),
   firstDay: z.number().int().min(0).max(6), duration: z.number().int().min(5).max(1440),
   reminder: z.number().int().min(-1).max(10080), timezone: z.string().min(1).max(100),
   autoSync: z.boolean(), interval: z.number().int().min(1).max(1440),
@@ -19,9 +19,11 @@ export const settingsSchema = z.object({
   autoUpdateCheck: z.boolean().default(true), closeToTray: z.boolean().default(true),
   boldText: z.boolean().default(false),
   showAlmanac: z.boolean().default(true),
+  showSidebarEvents: z.boolean().default(true),
+  silentStartup: z.boolean().default(false),
 });
 export type Settings = z.infer<typeof settingsSchema>;
-export const defaultSettings: Settings = { theme: 'system', view: 'dayGridMonth', firstDay: 1, duration: 60, reminder: 15, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, autoSync: true, interval: 10, defaultCalendar: '', timeFormat: '24', dateFormat: 'chinese', autoUpdateCheck: true, closeToTray: true, boldText: false, showAlmanac: true };
+export const defaultSettings: Settings = { theme: 'system', view: 'dayGridMonth', firstDay: 1, duration: 60, reminder: 15, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, autoSync: true, interval: 10, defaultCalendar: '', timeFormat: '24', dateFormat: 'chinese', autoUpdateCheck: true, closeToTray: true, boldText: false, showAlmanac: true, showSidebarEvents: true, silentStartup: false };
 export const eventInput = z.object({
   resourceId: z.string().optional(), calendarId: z.string().min(1), uid: z.string().optional(),
   title: z.string().trim().min(1, '请输入日程标题').max(500), start: z.string().min(10), end: z.string().min(10),

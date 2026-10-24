@@ -31,6 +31,8 @@ try {
   await page.getByRole('button', { name: '显示设置', exact: true }).click();
   await page.getByRole('checkbox', { name: '启用粗体显示' }).check();
   await page.waitForFunction(() => document.documentElement.dataset.boldText === 'true');
+  await page.getByRole('checkbox', { name: '在左侧显示日程', exact: true }).uncheck();
+  await page.waitForFunction(() => !document.querySelector('.sidebar-events'));
   await page.getByRole('checkbox', { name: '显示黄历', exact: true }).uncheck();
   await page.waitForFunction(() => !document.querySelector('.almanac'));
   if ((await page.evaluate(() => window.shixu.snapshot())).settings.showAlmanac !== false) throw new Error('Almanac preference was not persisted');
@@ -43,6 +45,9 @@ try {
   await page.getByRole('button', { name: '设置', exact: true }).click();
   await page.getByRole('button', { name: '显示设置', exact: true }).click();
   if (!(await page.getByRole('checkbox', { name: '启用粗体显示' }).isChecked())) throw new Error('Saved bold preference was lost after reload');
+  if (await page.getByRole('checkbox', { name: '在左侧显示日程', exact: true }).isChecked()) throw new Error('Sidebar event preference was lost after reload');
+  await page.getByRole('checkbox', { name: '在左侧显示日程', exact: true }).check();
+  await page.locator('.sidebar-events').waitFor();
   if (await page.getByRole('checkbox', { name: '显示黄历', exact: true }).isChecked()) throw new Error('Almanac preference was lost after reload');
   await page.getByRole('checkbox', { name: '显示黄历', exact: true }).check();
   await page.locator('.almanac').waitFor({ state: 'attached' });
@@ -51,6 +56,25 @@ try {
   const restoredWeight = await page.locator('.month-weekdays span').first().evaluate(el => Number(getComputedStyle(el).fontWeight));
   if (restoredWeight !== initialWeight) throw new Error('Disabling bold did not restore the original font weight');
   await page.getByRole('button', { name: '关闭面板', exact: true }).click();
+  const detail = await page.evaluate(() => ({
+    sidebar: getComputedStyle(document.querySelector('.sidebar-footer button')).fontSize,
+    views: [...document.querySelectorAll('.view-switch button')].map(el => getComputedStyle(el).fontSize),
+    today: getComputedStyle(document.querySelector('.period-navigation .today-button')).fontSize,
+    lunar: getComputedStyle(document.querySelector('.month-cell .lunar-date')).fontSize,
+    solar: getComputedStyle(document.querySelector('.month-cell .solar-date')).fontSize,
+    cap: getComputedStyle(document.querySelector('.window-chrome'), '::before').backgroundColor,
+    panel: getComputedStyle(document.querySelector('.sidebar')).backgroundColor,
+    glass: getComputedStyle(document.querySelector('.view-switch')).backdropFilter,
+  }));
+  if (detail.sidebar !== '10px' || detail.today !== '10px' || detail.views.some(font => font !== '10px') || detail.lunar !== '14px' || detail.solar !== '14px' || detail.cap !== detail.panel || !detail.glass.includes('blur')) throw new Error(`Requested typography/glass/sidebar cap mismatch: ${JSON.stringify(detail)}`);
+  if ((await page.locator('.window-drag-region').textContent()).trim()) throw new Error('Titlebar label was not removed');
+  await page.getByRole('button', { name: '年', exact: true }).click();
+  await page.locator('.fc-multimonth').waitFor();
+  if (await page.locator('.fc-multimonth-month').count() !== 12) throw new Error('Year view is incomplete');
+  await page.getByRole('button', { name: '日程列表', exact: true }).click();
+  await page.locator('.fc-list').waitFor();
+  await page.getByRole('button', { name: '月', exact: true }).click();
+  await page.locator('.month-grid').waitFor();
   const inlineScriptRan = await page.evaluate(() => {
     const script = document.createElement('script');
     script.textContent = 'window.__shixuCspProbe = true';
@@ -121,6 +145,11 @@ try {
   if (!snapshot.settings.closeToTray) throw new Error('Close-to-tray default changed');
   const reopened = native(`$h = [System.IntPtr]::new(${handle}); $null = [ShixuSmoke.Win]::ShowWindow($h,5); Start-Sleep -Milliseconds 400; [ShixuSmoke.Win]::IsWindowVisible($h)`);
   if (reopened !== 'True') throw new Error('Native window did not reopen');
+  await page.getByRole('button', { name: '设置', exact: true }).click();
+  await page.getByRole('button', { name: '启动与后台', exact: true }).click();
+  await page.getByRole('checkbox', { name: '静默启动', exact: true }).click();
+  await page.waitForFunction(async () => (await window.shixu.snapshot()).settings.silentStartup === true);
+  await page.getByRole('button', { name: '关闭面板', exact: true }).click();
   await page.evaluate(async () => { const state = await window.shixu.snapshot(); await window.shixu.settings({ ...state.settings, closeToTray: false }); });
   const exited = new Promise(resolve => app.once('exit', resolve));
   native(`$h = [System.IntPtr]::new(${handle}); $null = [ShixuSmoke.Win]::PostMessage($h,16,[System.IntPtr]::Zero,[System.IntPtr]::Zero)`);
