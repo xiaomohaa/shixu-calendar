@@ -17,7 +17,7 @@ const fixture = await davServer();
 const resourcePath = '/home/personal/first.ics';
 fixture.put(resourcePath, fixtureIcs('首次同步'));
 const port = 9224;
-const app = spawn(resolve('src-tauri/target/release/shixu-calendar.exe'), [], {
+const app = spawn(resolve(process.env.SHIXU_TAURI_TEST_EXE || 'src-tauri/target/release/shixu-calendar.exe'), [], {
   env: { ...process.env, SHIXU_TAURI_TEST_DATA_DIR: data, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}` },
   stdio: 'ignore',
 });
@@ -131,6 +131,8 @@ try {
   if (await page.locator('.editor-panel,.month-cell.is-selected').count()) throw new Error('Single click selected a date or opened the editor');
   if (await page.locator('.month-cell[data-date="2026-10-01"] .solar-date').textContent() !== '10月1日') throw new Error('First day is missing full month/date');
   if (await dateButton.locator('.solar-date').textContent() !== '29日') throw new Error('Ordinary day is missing 日 suffix');
+  if (await page.locator('.calendar-account svg,.calendar-toggle small').count()) throw new Error('Sidebar still displays cloud or read-only labels');
+  if ((await page.locator('.account-label').first().textContent()).includes('已重命名账户')) throw new Error('Sidebar duplicates calendar/account name instead of service grouping');
   const checkboxSize = await page.locator('.calendar-toggle input').first().evaluate(el => ({ width: getComputedStyle(el).width, height: getComputedStyle(el).height }));
   if (checkboxSize.width !== '10px' || checkboxSize.height !== '10px') throw new Error('Calendar visibility checkmark is not 10px');
   await dateButton.dblclick();
@@ -143,8 +145,24 @@ try {
   if (todayMarker === 'rgba(0, 0, 0, 0)' || todayMarker === miniSelection.background) throw new Error('Mini calendar did not distinguish today');
   const editorBox = await page.locator('.floating-editor').boundingBox();
   if (editorBox.width > 400 || editorBox.height >= 900 || editorBox.x < 0 || editorBox.y < 0 || editorBox.y + editorBox.height > 900) throw new Error('Editor is not a bounded popover');
+  await page.locator('.month-event.event-draft.event-timed').waitFor();
+  if (!(await page.locator('.month-event.event-draft .month-event-title').textContent()).includes('新建日程')) throw new Error('Empty draft preview missing');
+  await page.getByRole('textbox', { name: '日程标题' }).fill('实时预览标题');
+  await page.waitForFunction(() => document.querySelector('.month-event.event-draft .month-event-title')?.textContent === '实时预览标题');
+  await page.getByRole('checkbox', { name: '全天日程', exact: true }).check();
+  await page.locator('.month-event.event-draft.event-all-day.event-capsule').waitFor();
+  await page.getByLabel('结束时间', { exact: true }).fill('2026-11-03');
+  await page.waitForFunction(() => document.querySelectorAll('.month-event.event-draft').length === 2);
   await page.screenshot({ path: '.smoke-data/new-event-popover.png' });
+  const persistedPreview = await page.evaluate(() => window.shixu.events('2026-10-01', '2026-12-01'));
+  if (persistedPreview.some(event => event.title === '实时预览标题')) throw new Error('Draft was persisted before save');
+  await page.getByLabel('开始时间', { exact: true }).fill('2026-11-18');
+  await page.waitForFunction(() => document.querySelector('.month-span[data-start="2026-11-18"] .event-draft'));
+  page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', { name: '取消', exact: true }).click();
+  await page.locator('.event-draft').waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: '上一周期', exact: true }).click();
+  await page.locator('.month-cell[data-date="2026-10-23"]').waitFor();
   await page.locator('.month-cell[data-date="2026-11-01"] .month-day-button').dblclick();
   if (await page.getByLabel('开始时间', { exact: true }).inputValue() !== '2026-11-01T10:00') throw new Error('Adjacent month double-click uses wrong date');
   await page.getByRole('button', { name: '取消', exact: true }).click();
@@ -181,7 +199,7 @@ try {
   const lastDay = await page.locator('.month-cell[data-date="2026-10-28"]').boundingBox();
   if (Math.abs(box.x - firstDay.x - 3) > 1 || Math.abs(box.x + box.width - lastDay.x - lastDay.width + 3) > 1) throw new Error('Multi-day capsule does not align with start and end grid lines');
   const capsuleStyle = await span.locator('button').evaluate(el => ({ height: el.getBoundingClientRect().height, font: getComputedStyle(el).fontSize }));
-  if (capsuleStyle.height > 18 || capsuleStyle.font !== '10px') throw new Error('Capsule size regression');
+  if (capsuleStyle.height > 16 || capsuleStyle.font !== '10px') throw new Error('Capsule size regression');
   if (await page.locator('.month-span').filter({ has: page.getByRole('button', { name: /跨周续接胶囊/ }) }).count() !== 2) throw new Error('Cross-week capsule continuation failed');
   if (await page.locator('.month-cell .month-event').filter({ hasText: '连续跨天胶囊' }).count()) throw new Error('Multi-day capsule was duplicated in individual day cells');
   const past = page.locator('.month-span').filter({ has: page.getByRole('button', { name: /已结束跨天胶囊/ }) }).locator('button');
@@ -207,7 +225,7 @@ try {
     return {
       solar: getComputedStyle(header).fontSize, lunar: getComputedStyle(lunar).fontSize,
       event: getComputedStyle(event.querySelector('.month-event-title')).fontSize,
-      capsuleVisible: capsule.top >= cell.top && capsule.bottom <= cell.bottom + 1 && capsule.height === 18,
+      capsuleVisible: capsule.top >= cell.top && capsule.bottom <= cell.bottom + 1 && capsule.height === 16,
       allDates: [...grid.querySelectorAll('.month-day-button')].every(el => { const r = el.getBoundingClientRect(); return r.top >= rect.top && r.bottom <= rect.bottom + 1; }),
       lunarLeft: lunar.getBoundingClientRect().left < header.getBoundingClientRect().left,
       solarRight: cell.right - header.getBoundingClientRect().right < 6,
@@ -230,6 +248,20 @@ try {
   await page.screenshot({ path: '.smoke-data/small-window-events.png' });
   await page.setViewportSize({ width: 1380, height: 900 });
   await page.waitForFunction(() => !document.querySelector('.month-grid').classList.contains('inline-overflow'));
+  await page.getByRole('button', { name: '年', exact: true }).click();
+  await page.locator('.year-grid').waitFor();
+  await page.screenshot({ path: '.smoke-data/year-with-calendars.png' });
+  await page.locator('.year-month[aria-label="2026年10月"] .year-day[aria-label^="2026-10-29"]').dblclick();
+  await page.locator('.month-event.event-draft').waitFor();
+  if (await page.getByLabel('开始时间', { exact: true }).inputValue() !== '2026-10-29T10:00') throw new Error('Year date double-click did not open corresponding month/date draft');
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await page.locator('.event-draft').waitFor({ state: 'detached' });
+  await page.getByRole('button', { name: '年', exact: true }).click();
+  await page.locator('.year-grid').waitFor();
+  await page.getByRole('button', { name: '新建日程', exact: true }).first().click();
+  await page.locator('.month-event.event-draft').waitFor();
+  await page.getByRole('button', { name: '取消', exact: true }).click();
+  await page.locator('.event-draft').waitFor({ state: 'detached' });
   await page.evaluate(id => window.shixu.deleteAccount(id), report.id);
   if ((await page.evaluate(() => window.shixu.snapshot())).accounts.length) throw new Error('Tauri account deletion failed');
   fixture.put('/subscription.ics', fixtureIcs('ICS 链接导入'));

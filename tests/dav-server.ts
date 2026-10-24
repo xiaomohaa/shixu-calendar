@@ -1,6 +1,11 @@
 import { createServer, type IncomingMessage } from 'node:http';
 import { once } from 'node:events';
 import type { AccountInput } from '../src/shared/contracts';
+
+// Fetch rejects these ports even for a localhost fixture. Windows can assign
+// them when listen(0) chooses a dynamic port; rebind without making a request.
+// Source: https://github.com/nodejs/undici/blob/main/lib/web/fetch/constants.js
+const blockedTestPorts = new Set([1,7,9,11,13,15,17,19,20,21,22,23,25,37,42,43,53,69,77,79,87,95,101,102,103,104,109,110,111,113,115,117,119,123,135,137,139,143,161,179,389,427,465,512,513,514,515,526,530,531,532,540,548,554,556,563,587,601,636,989,990,993,995,1719,1720,1723,2049,3659,4045,4190,5060,5061,6000,6566,6665,6666,6667,6668,6669,6679,6697,10080]);
 const esc = (v: string) => v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 export const fixtureIcs = (title = '协议测试', uid = 'fixture-event') => `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//Fixture//CN\r\nBEGIN:VEVENT\r\nUID:${uid}\r\nDTSTAMP:20261001T000000Z\r\nDTSTART:20261023T020000Z\r\nDTEND:20261023T030000Z\r\nSUMMARY:${title}\r\nX-PRESERVE:original-data\r\nEND:VEVENT\r\nEND:VCALENDAR`;
 export async function davServer() {
@@ -58,8 +63,13 @@ export async function davServer() {
     }
     res.writeHead(404); res.end();
   });
-  server.listen(0, '127.0.0.1'); await once(server, 'listening');
-  const address = server.address(); if (!address || typeof address === 'string') throw new Error();
+  let address;
+  do {
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    address = server.address(); if (!address || typeof address === 'string') throw new Error();
+    if (!blockedTestPorts.has(address.port)) break;
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  } while (true);
   const url = `http://127.0.0.1:${address.port}`;
   const account: AccountInput = { name: '测试账户', url: `${url}/dav/`, username: 'alice', password: 'fixture-only-secret', allowHttp: true, paused: false };
   return { server, url, account, resources, requests, put, remove, set incremental(v: boolean) { incremental = v; }, set status(v: number) { status = v; }, set beforePut(v: (() => Promise<void>) | undefined) { beforePut = v; }, close: async () => { server.closeAllConnections(); await new Promise<void>(r => server.close(() => r())); } };

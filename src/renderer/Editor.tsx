@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { DateTime } from 'luxon';
 import { CalendarDays, Clock3, MapPin, AlignLeft, Repeat2, Bell, Trash2, Check } from 'lucide-react';
 import type { Calendar, EventInput } from '../shared/contracts';
@@ -6,8 +6,9 @@ import { Busy, Field, Panel } from './components';
 import type { PanelAnchor } from './popoverLayout';
 import { newEventTime } from '../calendar/newEventTime';
 
-export function Editor({ initial, calendars, close, saved, anchor, duration = 60 }: { initial: EventInput; calendars: Calendar[]; close: () => void; saved: () => void; anchor?: PanelAnchor; duration?: number }) {
+export function Editor({ initial, calendars, close, saved, anchor, duration = 60, changed }: { initial: EventInput; calendars: Calendar[]; close: () => void; saved: () => void; anchor?: PanelAnchor; duration?: number; changed?: (draft: EventInput) => void }) {
   const [form, setForm] = useState(initial), [busy, setBusy] = useState(false), [error, setError] = useState(''), [confirmDelete, setConfirmDelete] = useState(false);
+  useEffect(() => { if (!form.resourceId) changed?.(form); }, [form, changed]);
   const dirty = useRef(false);
   const set = <K extends keyof EventInput>(key: K, value: EventInput[K]) => { dirty.current = true; setForm(f => ({ ...f, [key]: value })); };
   const [custom, setCustom] = useState(!['', 'FREQ=DAILY', 'FREQ=WEEKLY', 'FREQ=MONTHLY', 'FREQ=YEARLY'].includes(initial.rrule));

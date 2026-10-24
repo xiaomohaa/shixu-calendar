@@ -66,7 +66,7 @@ html, body, #root { background:transparent; }
 .app-shell .month-date-content[data-month-start="true"] .lunar-date { max-width:calc(100% - 48px); }
 .app-shell .month-cell.is-today .solar-date { padding:0 3px; border-radius:50%; min-width:22px; }
 .app-shell .month-event { font-size:10px; color:var(--event-text); }
-.app-shell .month-event.event-timed { display:flex; width:100%; gap:4px; justify-content:flex-start; height:18px; line-height:16px; padding:1px 4px; border:0; border-radius:0; background:transparent; color:var(--event-text); }
+.app-shell .month-event.event-timed { display:flex; width:100%; gap:4px; justify-content:flex-start; height:16px; line-height:14px; padding:1px 4px; border:0; border-radius:0; background:transparent; color:var(--event-text); }
 .app-shell .month-event.event-timed:hover { background:var(--hover); }
 .app-shell .event-timed .event-color-dot { width:3px; height:12px; border:0; border-radius:2px; background:var(--event-color); flex-shrink:0; }
 .month-span .month-event { width:100%; }
@@ -81,19 +81,19 @@ html, body, #root { background:transparent; }
 .app-shell .fc .calendar-event-content, .app-shell .fc .fc-list-event-title, .agenda-event strong { font-size:10px; color:var(--event-text); }
 .app-shell .fc .fc-multimonth-title { font-size:14px; }
 .app-shell .fc .fc-multimonth { background:var(--bg); }
-.app-shell .event-capsule { height:18px; line-height:16px; padding:1px 4px; }
+.app-shell .event-capsule { height:16px; line-height:14px; padding:1px 4px; }
 .app-shell .month-event-time { font-size:9px; }
 .app-shell .month-more { font-size:10px; color:var(--overflow-text); }
 .app-shell .month-event-list { gap:2px; padding-left:3px; padding-right:3px; }
 /* Glass is explicitly requested for controls; date and event content keep their semantic surfaces. */
-.desktop-window .app-shell button:not(:is(.month-day-button,.month-event,.month-more,.agenda-event,.summary-event,.theme-option,.mini-grid button)) {
+.desktop-window .app-shell button:not(:is(.month-day-button,.month-event,.month-more,.agenda-event,.summary-event,.theme-option,.mini-grid button,.year-day,.year-month-title)) {
   background:linear-gradient(155deg,color-mix(in oklab,var(--field) 78%,transparent),color-mix(in oklab,var(--panel) 45%,transparent));
   border:1px solid color-mix(in oklab,var(--line) 65%,transparent);
   box-shadow:inset 0 1px 1px color-mix(in oklab,var(--field) 95%,transparent),inset 0 -1px 2px color-mix(in oklab,var(--text) 5%,transparent),0 2px 5px color-mix(in oklab,var(--text) 6%,transparent);
   backdrop-filter:blur(12px) saturate(1.35);
   transition:background .15s ease-out,box-shadow .15s ease-out;
 }
-.desktop-window .app-shell button:not(:is(.month-day-button,.month-event,.month-more,.agenda-event,.summary-event,.theme-option,.mini-grid button)):hover { background:color-mix(in oklab,var(--field) 90%,transparent); }
+.desktop-window .app-shell button:not(:is(.month-day-button,.month-event,.month-more,.agenda-event,.summary-event,.theme-option,.mini-grid button,.year-day,.year-month-title)):hover { background:color-mix(in oklab,var(--field) 90%,transparent); }
 .desktop-window button.primary { color:var(--accent); background:color-mix(in oklab,var(--accent) 15%,var(--field)); border-color:color-mix(in oklab,var(--accent) 40%,var(--line)); }
 .desktop-window .window-actions button { width:30px; border-radius:6px; border:0; box-shadow:inset 0 1px 1px color-mix(in oklab,var(--field) 60%,transparent); }
 .app-shell .month-cell .month-day-button:hover { background:transparent; }
@@ -132,3 +132,15 @@ html, body, #root { background:transparent; }
   .settings-nav { overflow-y:auto; }
   .settings-brand { display:none; }
 }
+
+/* The reference uses one shared segmented surface, with a single active segment. */
+.desktop-window .app-shell .toolbar .view-switch { gap:0; padding:3px; border-radius:999px; background:color-mix(in oklab,var(--field) 72%,transparent); box-shadow:inset 0 1px 2px var(--field),0 1px 4px color-mix(in oklab,var(--text) 4%,transparent); }
+.desktop-window .app-shell .toolbar .view-switch button { flex:1; height:24px; min-width:46px; padding:2px 12px; border:0; border-radius:999px; background:transparent; box-shadow:none; backdrop-filter:none; }
+.desktop-window .app-shell .toolbar .view-switch button:hover { background:transparent; }
+.desktop-window .app-shell .toolbar .view-switch button.active { background:color-mix(in oklab,var(--hover) 88%,transparent); box-shadow:inset 0 1px 2px color-mix(in oklab,var(--field) 50%,transparent); }
+.sidebar .calendar-account .account-label { margin:12px 8px 4px; font-weight:550; color:var(--muted); }
+.sidebar-events-hidden .day-summary, .sidebar-events-hidden .mini-calendar, .sidebar-events-hidden .almanac { border:0; }
+.app-shell .month-span .event-capsule { height:16px; }
+.month-event.event-draft, .fc .event-draft { opacity:1; outline:1px solid color-mix(in oklab,var(--event-color) 75%,var(--line)); outline-offset:-1px; }
+.month-event.event-draft .month-event-title { font-weight:550; }
+@media (max-width:580px) { .desktop-window .app-shell .toolbar .view-switch button { min-width:34px; padding:2px 7px; } }

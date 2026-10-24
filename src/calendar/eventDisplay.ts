@@ -21,15 +21,15 @@ export interface WeekSpan {
 export function weekEventSpans(events: CalendarEvent[], days: string[], timezone: string): WeekSpan[] {
   const candidates = events.map(event => ({ event, ...eventDateRange(event, timezone) }))
     .filter((item): item is { event: CalendarEvent; start: string; end: string } =>
-      !!item.start && !!item.end && item.start < item.end && item.start <= days[6] && item.end >= days[0])
-    .sort((a, b) => a.start.localeCompare(b.start) || b.end.localeCompare(a.end) || a.event.id.localeCompare(b.event.id));
-  const lanes: number[] = [];
+      !!item.start && !!item.end && (item.start < item.end || !!item.event.draft) && item.start <= days[6] && item.end >= days[0])
+    .sort((a, b) => Number(!!b.event.draft) - Number(!!a.event.draft) || a.start.localeCompare(b.start) || b.end.localeCompare(a.end) || a.event.id.localeCompare(b.event.id));
+  const lanes: boolean[][] = [];
   return candidates.map(item => {
     const start = Math.max(0, days.findIndex(day => day >= item.start));
     const end = days.findLastIndex(day => day <= item.end);
-    let lane = lanes.findIndex(last => last < start);
-    if (lane < 0) lane = lanes.length;
-    lanes[lane] = end;
+    let lane = lanes.findIndex(occupied => Array.from({ length: end - start + 1 }, (_, index) => !occupied[start + index]).every(Boolean));
+    if (lane < 0) { lane = lanes.length; lanes.push(Array(7).fill(false)); }
+    for (let day = start; day <= end; day++) lanes[lane][day] = true;
     return { event: item.event, start, end, lane, continuesLeft: item.start < days[0], continuesRight: item.end > days[6] };
   });
 }

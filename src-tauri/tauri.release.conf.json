@@ -1,6 +1,6 @@
 {
   "productName": "时序日历 2",
-  "version": "2.0.4",
+  "version": "2.0.5",
   "identifier": "cn.shixu.calendar.tauri",
   "build": {
     "frontendDist": "../dist",

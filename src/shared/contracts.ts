@@ -33,7 +33,7 @@ export const eventInput = z.object({
   scope: z.enum(['series', 'instance']).default('series'), recurrenceId: z.string().optional(),
 });
 export type EventInput = z.infer<typeof eventInput>;
-export interface CalendarEvent { id: string; resourceId: string; calendarId: string; uid: string; title: string; start: string; end: string; allDay: boolean; timezone: string; location: string; description: string; rrule: string; reminder: number; recurrenceId?: string; recurring: boolean; pending: boolean; conflict: boolean; warning?: string }
+export interface CalendarEvent { id: string; resourceId: string; calendarId: string; uid: string; title: string; start: string; end: string; allDay: boolean; timezone: string; location: string; description: string; rrule: string; reminder: number; recurrenceId?: string; recurring: boolean; pending: boolean; conflict: boolean; warning?: string; draft?: boolean }
 export interface Conflict { id: string; resourceId: string; localIcs: string; remoteIcs: string | null; remoteEtag: string | null; createdAt: string }
 export interface Snapshot { accounts: Account[]; calendars: Calendar[]; settings: Settings; pending: number; conflicts: Conflict[]; syncing: string[]; bytes: number; resources: number; diagnostics: string[] }
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };

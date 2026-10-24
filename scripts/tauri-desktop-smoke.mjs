@@ -6,7 +6,8 @@ import { resolve } from 'node:path';
 const data = resolve('.smoke-data', `tauri-desktop-${Date.now()}`);
 await mkdir(data, { recursive: true });
 const port = 9225;
-const app = spawn(resolve('src-tauri/target/release/shixu-calendar.exe'), [], {
+const executable = resolve(process.env.SHIXU_TAURI_TEST_EXE || 'src-tauri/target/release/shixu-calendar.exe');
+const app = spawn(executable, [], {
   env: { ...process.env, SHIXU_TAURI_TEST_DATA_DIR: data, WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}` },
   stdio: 'ignore',
 });
@@ -33,6 +34,8 @@ try {
   await page.waitForFunction(() => document.documentElement.dataset.boldText === 'true');
   await page.getByRole('checkbox', { name: '在左侧显示日程', exact: true }).uncheck();
   await page.waitForFunction(() => !document.querySelector('.sidebar-events'));
+  const sidebarLines = await page.locator('.sidebar :is(.day-summary,.mini-calendar,.almanac)').evaluateAll(nodes => nodes.some(el => parseFloat(getComputedStyle(el).borderTopWidth) > 0 || parseFloat(getComputedStyle(el).borderBottomWidth) > 0));
+  if (sidebarLines) throw new Error('Hidden sidebar events retain separator lines');
   if (await page.locator('.day-summary>.sidebar-section-heading').count()) throw new Error('Hidden sidebar events still display date/count');
   await page.getByRole('checkbox', { name: '显示黄历', exact: true }).uncheck();
   await page.waitForFunction(() => !document.querySelector('.almanac'));
@@ -70,8 +73,25 @@ try {
   if (detail.sidebar !== '10px' || detail.today !== '10px' || detail.views.some(font => font !== '10px') || detail.lunar !== '12px' || detail.solar !== '12px' || detail.cap !== detail.panel || !detail.glass.includes('blur')) throw new Error(`Requested typography/glass/sidebar cap mismatch: ${JSON.stringify(detail)}`);
   if ((await page.locator('.window-drag-region').textContent()).trim()) throw new Error('Titlebar label was not removed');
   await page.getByRole('button', { name: '年', exact: true }).click();
-  await page.locator('.fc-multimonth').waitFor();
-  if (await page.locator('.fc-multimonth-month').count() !== 12) throw new Error('Year view is incomplete');
+  await page.locator('.year-grid').waitFor();
+  if (await page.locator('.year-month').count() !== 12) throw new Error('Year view is incomplete');
+  const yearStyle = await page.locator('.year-grid').evaluate(el => ({ columns: getComputedStyle(el).gridTemplateColumns.split(' ').length, rows: getComputedStyle(el).gridTemplateRows.split(' ').length, dates: el.querySelectorAll('.year-day').length }));
+  if (yearStyle.columns !== 4 || yearStyle.rows !== 3 || yearStyle.dates !== 504) throw new Error('Year view is not a 4 by 3 overview');
+  if (await page.locator('.year-grid .fc-event,.year-grid .month-event').count()) throw new Error('Year overview contains event pills');
+  await page.locator('.year-month[aria-label="2026年2月"] .year-day.lunar-first[aria-label^="2026-02-17"]').waitFor();
+  const baseYear = Number((await page.locator('.calendar-heading h1').textContent()).replace('年', ''));
+  await page.getByRole('button', { name: '下一周期', exact: true }).click();
+  await page.waitForFunction(year => document.querySelector('.calendar-heading h1').textContent === `${year}年`, baseYear + 1);
+  await page.getByRole('button', { name: '上一周期', exact: true }).click();
+  await page.waitForFunction(year => document.querySelector('.calendar-heading h1').textContent === `${year}年`, baseYear);
+  const segment = await page.getByRole('button', { name: '年', exact: true }).evaluate(el => ({ border: getComputedStyle(el).borderWidth, filter: getComputedStyle(el).backdropFilter }));
+  if (await page.locator('.view-switch button').count() !== 4 || segment.border !== '0px' || segment.filter !== 'none') throw new Error(`View switch does not share one capsule surface: ${JSON.stringify(segment)}`);
+  await page.screenshot({ path: '.smoke-data/year-view.png' });
+  await page.getByRole('button', { name: '二月', exact: true }).click();
+  await page.locator('.month-grid').waitFor();
+  if (!(await page.locator('.calendar-heading h1').textContent()).includes('2月')) throw new Error('Year month heading did not open corresponding month');
+  await page.getByRole('button', { name: '年', exact: true }).click();
+  await page.locator('.year-grid').waitFor();
   await page.getByRole('button', { name: '日程列表', exact: true }).click();
   await page.locator('.fc-list').waitFor();
   await page.getByRole('button', { name: '月', exact: true }).click();
@@ -121,6 +141,13 @@ try {
   if (!(await page.getByRole('button', { name: '设置', exact: true }).isVisible())) throw new Error('Settings inaccessible in automatic narrow sidebar');
   await page.mouse.move(460, 150);
   await page.waitForFunction(() => document.querySelector('.app-shell').classList.contains('sidebar-collapsed'));
+  await page.getByRole('button', { name: '年', exact: true }).click();
+  await page.locator('.year-grid').waitFor();
+  const yearFits = await page.locator('.year-grid').evaluate(el => { const rect = el.getBoundingClientRect(); return [...el.querySelectorAll('.year-day')].every(day => { const r = day.getBoundingClientRect(); return r.top >= rect.top - 1 && r.bottom <= rect.bottom + 1; }) && el.scrollHeight <= el.clientHeight + 1; });
+  if (!yearFits || await page.locator('.year-month').count() !== 12) throw new Error('Minimum-size year overview loses months/dates');
+  await page.screenshot({ path: '.smoke-data/year-small.png' });
+  await page.getByRole('button', { name: '月', exact: true }).click();
+  await page.locator('.month-grid').waitFor();
   const search = page.getByRole('button', { name: '搜索日程', exact: true });
   const searchShape = await search.evaluate(el => ({ width: el.clientWidth, height: el.clientHeight }));
   if (Math.abs(searchShape.width - searchShape.height) > 1) throw new Error('Search button is not circular');
@@ -137,7 +164,7 @@ try {
   const first = `${nativeHandle},${native(`$h = [System.IntPtr]::new(${nativeHandle}); [ShixuSmoke.Win]::IsWindowVisible($h)`)}`;
   const [handle, visible] = first.split(',');
   if (visible !== 'False' || app.exitCode !== null) throw new Error(`Close-to-tray failed: ${first}`);
-  const second = spawn(resolve('src-tauri/target/release/shixu-calendar.exe'), [], {
+  const second = spawn(executable, [], {
     env: { ...process.env, SHIXU_TAURI_TEST_DATA_DIR: data }, stdio: 'ignore',
   });
   await Promise.race([

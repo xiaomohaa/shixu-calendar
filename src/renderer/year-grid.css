@@ -1,0 +1,27 @@
+.year-grid { height:100%; min-height:0; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); grid-template-rows:repeat(3,minmax(0,1fr)); gap:22px 36px; padding:8px 28px 20px; overflow:hidden; }
+.year-month { min-width:0; min-height:0; display:grid; grid-template-rows:26px 22px minmax(0,1fr); }
+.year-month h2 { margin:0; display:flex; align-items:center; }
+.year-month-title { padding:0; border:0; border-radius:0; background:transparent; color:var(--accent); font-size:16px; font-weight:400; }
+.year-month-title:hover { background:transparent; text-decoration:underline; text-underline-offset:3px; }
+.year-weekdays, .year-days { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); min-width:0; min-height:0; }
+.year-weekdays { color:var(--muted); font-size:10px; align-items:center; text-align:center; }
+.year-days { grid-template-rows:repeat(6,minmax(0,1fr)); }
+.year-day { padding:0; min-width:0; min-height:0; border:0; border-radius:0; background:transparent; font-size:10px; color:var(--text); gap:0; }
+.year-day:hover { background:transparent; }
+.year-day span { display:grid; place-items:center; min-width:20px; height:18px; line-height:18px; font-variant-numeric:tabular-nums; }
+.year-day.other-month { color:color-mix(in oklab,var(--faint) 65%,var(--bg)); }
+.year-day.lunar-first span { text-decoration:underline; text-decoration-color:var(--accent); text-decoration-thickness:1.5px; text-underline-offset:2px; }
+.year-day.is-today span { min-width:18px; border-radius:50%; background:var(--accent); color:var(--field); text-decoration:none; }
+.year-legend { display:flex; align-items:center; gap:12px; font-size:11px; white-space:nowrap; }
+.app-shell .calendar-heading .year-legend span { margin:0; display:flex; align-items:center; gap:4px; }
+.year-legend i { display:inline-block; width:13px; height:1.5px; background:var(--accent); }
+@media (max-width:1100px) { .year-grid { column-gap:18px; padding-left:16px; padding-right:16px; } }
+@media (max-width:580px) { .year-grid { gap:12px 8px; padding:6px 8px; } .year-month { grid-template-rows:20px 18px minmax(0,1fr); } .year-month-title { font-size:13px; } .year-legend { display:none; } }
+@media (max-height:520px) {
+  .year-grid { gap:2px 8px; padding:2px 8px 4px; }
+  .year-month { grid-template-rows:16px 10px minmax(0,1fr); }
+  .year-month-title { font-size:12px; }
+  .year-day span { min-width:14px; height:10px; line-height:10px; }
+  .year-day.is-today span { min-width:12px; }
+  .year-day.lunar-first span { text-underline-offset:1px; text-decoration-thickness:1px; }
+}
