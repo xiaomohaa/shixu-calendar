@@ -221,11 +221,12 @@ try {
     const grid = document.querySelector('.month-grid'), rect = grid.getBoundingClientRect();
     const day = document.querySelector('.month-cell[data-date="2026-10-23"]');
     const event = day.querySelector('.month-event'), header = day.querySelector('.solar-date'), lunar = day.querySelector('.lunar-date');
-    const capsule = event.getBoundingClientRect(), cell = day.getBoundingClientRect();
+    const capsule = event?.getBoundingClientRect(), cell = day.getBoundingClientRect();
     return {
       solar: getComputedStyle(header).fontSize, lunar: getComputedStyle(lunar).fontSize,
-      event: getComputedStyle(event.querySelector('.month-event-title')).fontSize,
-      capsuleVisible: capsule.top >= cell.top && capsule.bottom <= cell.bottom + 1 && capsule.height === 16,
+      event: event ? getComputedStyle(event.querySelector('.month-event-title')).fontSize : null,
+      foldedOnly: !event && !!day.querySelector('.month-more'),
+      capsuleVisible: capsule ? capsule.top >= cell.top && capsule.bottom <= cell.bottom + 1 && capsule.height === 16 : false,
       allDates: [...grid.querySelectorAll('.month-day-button')].every(el => { const r = el.getBoundingClientRect(); return r.top >= rect.top && r.bottom <= rect.bottom + 1; }),
       lunarLeft: lunar.getBoundingClientRect().left < header.getBoundingClientRect().left,
       solarRight: cell.right - header.getBoundingClientRect().right < 6,
@@ -233,8 +234,8 @@ try {
       mode: grid.dataset.eventMode, dots: grid.querySelectorAll('.event-dot').length,
     };
   });
-  if (smallLayout.solar !== fixedFonts.solar || smallLayout.lunar !== fixedFonts.lunar || smallLayout.event !== fixedFonts.event) throw new Error(`Fonts changed at minimum size: ${JSON.stringify(smallLayout)}`);
-  if (!smallLayout.capsuleVisible || !smallLayout.allDates || !smallLayout.lunarLeft || !smallLayout.solarRight || !/^\+\d+个$/.test(smallLayout.more) || smallLayout.mode !== 'capsules' || smallLayout.dots) throw new Error(`Minimum-size event layout failed: ${JSON.stringify(smallLayout)}`);
+  if (smallLayout.solar !== fixedFonts.solar || smallLayout.lunar !== fixedFonts.lunar || smallLayout.event !== null && smallLayout.event !== fixedFonts.event) throw new Error(`Fonts changed at minimum size: ${JSON.stringify(smallLayout)}`);
+  if (!smallLayout.foldedOnly || !smallLayout.allDates || !smallLayout.lunarLeft || !smallLayout.solarRight || !/^\+\d+个$/.test(smallLayout.more) || smallLayout.mode !== 'capsules' || smallLayout.dots) throw new Error(`Minimum-size event layout failed: ${JSON.stringify(smallLayout)}`);
   await page.locator('.month-cell[data-date="2026-10-29"] .month-day-button').dblclick();
   const smallEditor = await page.locator('.floating-editor').boundingBox();
   if (smallEditor.x < 0 || smallEditor.y < 0 || smallEditor.x + smallEditor.width > 480 || smallEditor.y + smallEditor.height > 360) throw new Error('Minimum-size editor is off screen');

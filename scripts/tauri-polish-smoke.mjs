@@ -36,6 +36,7 @@ try {
     await window.shixu.settings({ ...state.settings, theme: 'light', boldText: false, autoSync: false });
     for (const [title, start, end, allDay] of [
       ['普通全天日程', '2026-10-13', '2026-10-14', true],
+      ['第二项全天日程', '2026-10-13', '2026-10-14', true],
       ['过去的普通日程', '2026-10-14T10:00', '2026-10-14T11:00', false],
     ]) await window.shixu.saveEvent({ calendarId: calendar.id, title, start, end, allDay, timezone: 'Asia/Shanghai', location: '', description: '', rrule: '', reminder: -1, scope: 'series' });
   }, fixture.account);
@@ -56,9 +57,31 @@ try {
   if (dates.solar !== '12px' || dates.lunar !== '10px' || dates.lunarColor !== dates.eventColor) throw new Error(`Lunar typography mismatch: ${JSON.stringify(dates)}`);
   if ((await page.locator('.calendar-heading').textContent()).includes('Asia/Shanghai')) throw new Error('Header timezone is still visible');
   await page.screenshot({ path: '.smoke-data/glass-month.png' });
+  const headerHeight = await page.locator('.month-weekdays').evaluate(el => el.getBoundingClientRect().bottom);
+  if (headerHeight > 145) throw new Error(`Header retains too much blank space: ${headerHeight}`);
+  const navSize = await page.getByRole('button', { name: '上一周期', exact: true }).evaluate(el => ({ width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height }));
+  if (navSize.width > 22 || navSize.height > 22) throw new Error('Period navigation buttons are still too large');
+  const searchTrigger = page.getByRole('button', { name: '搜索日程', exact: true });
+  const listBefore = await page.getByRole('button', { name: '日程列表', exact: true }).boundingBox();
+  await searchTrigger.click();
+  const searchInput = page.getByRole('textbox', { name: '搜索标题、地点和备注', exact: true });
+  await searchInput.waitFor(); await page.waitForTimeout(300);
+  const searchBox = await searchInput.boundingBox(), toolbarBox = await page.locator('.toolbar').boundingBox();
+  const listAfter = await page.getByRole('button', { name: '日程列表', exact: true }).boundingBox();
+  if (await page.locator('.search-bar').count() || searchBox.y < toolbarBox.y || searchBox.y + searchBox.height > toolbarBox.y + toolbarBox.height || listAfter.x >= listBefore.x - 80) throw new Error('Search did not expand left in the toolbar with its neighboring icon');
+  if (await page.locator('.month-weekdays').evaluate(el => el.getBoundingClientRect().bottom) !== headerHeight) throw new Error('Opening search moved the calendar vertically');
+  await searchInput.fill('普通全天');
+  await page.waitForFunction(() => [...document.querySelectorAll('.month-event')].every(el => el.textContent.includes('普通全天')) && document.querySelectorAll('.month-event').length === 1);
+  await page.screenshot({ path: '.smoke-data/inline-search.png' });
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('.inline-search.is-open'));
+  await page.keyboard.press('Control+f'); await searchInput.waitFor();
+  if (!(await searchInput.evaluate(el => el === document.activeElement))) throw new Error('Ctrl+F did not focus inline search');
+  await page.getByRole('button', { name: '关闭搜索', exact: true }).click();
+  await page.locator('.month-event').filter({ hasText: '节假日图标' }).waitFor();
   await page.getByRole('button', { name: '2026年10月13日', exact: true }).click();
   await page.getByRole('button', { name: '周', exact: true }).click();
-  await page.locator('.fc .calendar-marker').waitFor();
+  await page.locator('.fc .calendar-marker').first().waitFor();
   const weekPast = page.locator('.fc .event-timed').filter({ hasText: '过去的普通日程' });
   if (await weekPast.evaluate(el => getComputedStyle(el).opacity) !== '1') throw new Error('Week view still fades past events');
   await page.getByRole('button', { name: '上一周期', exact: true }).click();
@@ -98,6 +121,20 @@ try {
   await page.locator('.month-grid').waitFor();
   const smallFont = await page.locator('.month-cell .lunar-date').first().evaluate(el => getComputedStyle(el).fontSize);
   if (smallFont !== '10px') throw new Error('Lunar font changes at minimum size');
+  const fold = page.locator('.month-cell[data-date="2026-10-13"]');
+  if (await fold.locator('.month-event').count() || (await fold.locator('.month-more').textContent()).trim() !== '+2个') throw new Error('Two events at minimum size must collapse into +2个 alone');
+  await fold.locator('.month-more').click();
+  if (await page.locator('.day-agenda .agenda-event').count() !== 2) throw new Error('Folded events were not both available');
+  await page.getByRole('button', { name: '关闭当天日程', exact: true }).click();
+  await page.getByRole('button', { name: '搜索日程', exact: true }).click();
+  await searchInput.waitFor(); await page.waitForTimeout(300);
+  if (await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)) throw new Error('Inline search overflows minimum window');
+  const smallToolbar = await page.locator('.toolbar').boundingBox(), smallSearch = await searchInput.boundingBox();
+  if (smallSearch.y + smallSearch.height > smallToolbar.y + smallToolbar.height) throw new Error('Minimum-size search opens below toolbar');
+  await page.screenshot({ path: '.smoke-data/inline-search-small.png' });
+  await page.getByRole('button', { name: '关闭搜索', exact: true }).click();
+  await page.waitForTimeout(300);
+  await page.screenshot({ path: '.smoke-data/folded-two-events.png' });
   console.log('PASS: glass settings light/dark/minimum size, grouped navigation, two accounts, all-day icons, no event fading, lunar fonts and hidden header timezone');
 } finally {
   await browser?.close().catch(() => {});

@@ -21,6 +21,7 @@ import { YearGrid } from './YearGrid';
 import { getChineseCalendarDay } from '../calendar/chineseCalendar';
 import { draftEvent } from '../calendar/draftEvent';
 import { WindowChrome } from './WindowChrome';
+import { ToolbarSearch } from './ToolbarSearch';
 import { holidayCalendarIds } from '../calendar/eventMarker';
 import { EventMark } from './EventMark';
 import { monthDays } from '../calendar/monthLayout';
@@ -46,7 +47,7 @@ export function App() {
   const [editorAnchor, setEditorAnchor] = useState<PanelAnchor>();
   const [error, setError] = useState(''), [notice, setNotice] = useState(''), [loading, setLoading] = useState(true);
   const calendarRef = useRef<FullCalendar>(null), range = useRef({ start: DateTime.local().startOf('month').minus({ days: 7 }).toISO()!, end: DateTime.local().endOf('month').plus({ days: 7 }).toISO()! });
-  const loadId = useRef(0), booted = useRef(false), searchRef = useRef<HTMLInputElement>(null);
+  const loadId = useRef(0), booted = useRef(false);
   const calendarContainer = useRef<HTMLDivElement>(null);
   const refresh = useCallback(async () => {
     if (!window.shixu) { setError('请使用桌面应用打开此日历。浏览器预览无法访问本地数据库。'); setLoading(false); return; }
@@ -78,7 +79,6 @@ export function App() {
   }, [view, loading]);
   useEffect(() => { const media = matchMedia('(max-width: 900px)'); const apply = () => { setNarrow(media.matches); setSidebar(false); }; apply(); media.addEventListener('change', apply); return () => media.removeEventListener('change', apply); }, []);
   useEffect(() => { const media = matchMedia('(prefers-color-scheme: dark)'); const apply = () => { document.documentElement.dataset.theme = snapshot?.settings.theme === 'dark' || (snapshot?.settings.theme === 'system' && media.matches) ? 'dark' : 'light'; }; apply(); media.addEventListener('change', apply); return () => media.removeEventListener('change', apply); }, [snapshot?.settings.theme]);
-  useEffect(() => { if (searchOpen) searchRef.current?.focus(); }, [searchOpen]);
   useEffect(() => { const key = (event: KeyboardEvent) => { if ((event.ctrlKey || event.metaKey) && event.key === ',') { event.preventDefault(); setSettingsTab('display'); } if (event.key === 'Escape') setSidebar(false); }; window.addEventListener('keydown', key); return () => window.removeEventListener('keydown', key); }, []);
   useEffect(() => { document.documentElement.dataset.boldText = String(snapshot?.settings.boldText ?? false); }, [snapshot?.settings.boldText]);
   useEffect(() => { if (notice) { const t = setTimeout(() => setNotice(''), 5000); return () => clearTimeout(t); } }, [notice]);
@@ -172,15 +172,14 @@ export function App() {
       <section className="day-summary">{(prefs?.showSidebarEvents ?? true) && <div className="sidebar-section-heading"><h2>{DateTime.fromISO(selected).setLocale('zh-cn').toFormat(prefs?.dateFormat === 'numeric' ? 'yyyy/MM/dd cccc' : 'M月d日 cccc')}</h2><small>{selectedEvents.length} 项</small></div>}{(prefs?.showAlmanac ?? true) && <Almanac date={selected}/>}{(prefs?.showSidebarEvents ?? true) && <div className="sidebar-events">{selectedEvents.slice(0, 4).map(e => <button className="summary-event" key={e.id} onClick={() => openEvent(e)}><i className="color-dot" style={{ background: snapshot?.calendars.find(c => c.id === e.calendarId)?.color }}/><div><span>{e.title}</span></div></button>)}{selectedEvents.length === 0 && <p className="empty-day-message">这一天，还留有空白。</p>}</div>}</section>
       </div>
     </aside>
-    <main className="main-content"><header className="toolbar">
+    <main className="main-content"><header className={`toolbar ${searchOpen ? 'search-expanded' : ''}`}>
       <div className="toolbar-left"><IconButton label="新建日程" onClick={() => create()}><Plus size={15}/></IconButton></div>
       <div className="view-switch" aria-label="日历视图">{[{ id: 'timeGridDay', label: '日' }, { id: 'timeGridWeek', label: '周' }, { id: 'dayGridMonth', label: '月' }, { id: 'multiMonthYear', label: '年' }].map(v => <button key={v.id} aria-pressed={view === v.id} className={view === v.id ? 'active' : ''} onClick={() => setViewTo(v.id)}>{v.label}</button>)}</div>
-      <div className="toolbar-right"><IconButton label="日程列表" aria-pressed={view === 'listMonth'} onClick={() => setViewTo('listMonth')}><List size={13}/></IconButton><button className="toolbar-search" aria-label="搜索日程" onClick={() => setSearchOpen(v => !v)}><Search size={14}/><span>搜索</span><kbd>Ctrl F</kbd></button><IconButton label={snapshot?.syncing.length ? '取消同步' : '同步日历'} disabled={!snapshot?.accounts.length} onClick={() => void execute(() => snapshot?.syncing.length ? window.shixu.cancelSync() : window.shixu.sync(), snapshot?.syncing.length ? '同步已取消' : '同步完成')}><RefreshCw size={14} className={snapshot?.syncing.length ? 'spin' : ''}/></IconButton></div>
+      <ToolbarSearch open={searchOpen} value={query} change={setQuery} toggle={open => { setSearchOpen(open); if (!open) setQuery(''); }} before={<IconButton label="日程列表" aria-pressed={view === 'listMonth'} onClick={() => setViewTo('listMonth')}><List size={13}/></IconButton>} after={<IconButton label={snapshot?.syncing.length ? '取消同步' : '同步日历'} disabled={!snapshot?.accounts.length} onClick={() => void execute(() => snapshot?.syncing.length ? window.shixu.cancelSync() : window.shixu.sync(), snapshot?.syncing.length ? '同步已取消' : '同步完成')}><RefreshCw size={14} className={snapshot?.syncing.length ? 'spin' : ''}/></IconButton>}/>
     </header>
-      <div className="calendar-heading"><div><h1>{view === 'multiMonthYear' ? `${year}年` : view === 'dayGridMonth' ? DateTime.fromISO(month).toFormat(prefs?.dateFormat === 'numeric' ? 'yyyy/MM' : 'yyyy年M月') : prefs?.dateFormat === 'numeric' ? title.replaceAll('年', '/').replaceAll('月', '/').replaceAll('日', '').replace(/\/(?=$|[ –])/g, '') : title}</h1>{query && <span>{`当前日期范围内，找到 ${filtered.length} 项日程`}</span>}</div>
+      <div className="calendar-heading"><div><h1>{view === 'multiMonthYear' ? `${year}年` : view === 'dayGridMonth' ? DateTime.fromISO(month).toFormat(prefs?.dateFormat === 'numeric' ? 'yyyy/MM' : 'yyyy年M月') : prefs?.dateFormat === 'numeric' ? title.replaceAll('年', '/').replaceAll('月', '/').replaceAll('日', '').replace(/\/(?=$|[ –])/g, '') : title}</h1></div>
         <div className="heading-trailing">{view === 'multiMonthYear' && <div className="year-legend"><span><i/>{yearLunar ? `${yearLunar.yearGanZhi}${yearLunar.zodiac}年` : '农历年份'}</span><span><i/>农历初一</span></div>}{snapshot?.conflicts.length ? <button className="conflict-pill" onClick={() => setSettingsTab('conflicts')}><TriangleAlert size={15}/>{snapshot.conflicts.length} 个冲突</button> : snapshot?.pending ? <span className="pending-pill">{snapshot.pending} 项待同步</span> : null}<div className="period-navigation"><IconButton label="上一周期" onClick={() => navigate(-1)}><ChevronLeft size={14}/></IconButton><button className="today-button" onClick={() => go(today!)}>今天</button><IconButton label="下一周期" onClick={() => navigate(1)}><ChevronRight size={14}/></IconButton></div></div>
       </div>
-      {searchOpen && <div className="search-bar"><Search size={14}/><input ref={searchRef} aria-label="搜索标题、地点和备注" placeholder="搜索标题、地点和备注…" value={query} onChange={e => setQuery(e.target.value)}/><span>当前日期范围</span><IconButton label="关闭搜索" onClick={() => { setSearchOpen(false); setQuery(''); }}><X size={16}/></IconButton></div>}
       {error && <div className="app-error" role="alert"><TriangleAlert size={17}/><span>{error}</span><IconButton label="关闭错误提示" onClick={() => setError('')}><X size={15}/></IconButton></div>}
       {snapshot?.diagnostics.map(d => <div className="app-error" key={d}><TriangleAlert size={16}/>{d}</div>)}
       <UpdateNotice open={() => setSettingsTab('updates')}/>

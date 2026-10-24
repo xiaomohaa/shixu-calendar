@@ -6,7 +6,7 @@ import { groupMonthEvents, monthDays, monthLayout, MONTH_EVENT_LANE } from '../c
 import { MonthDate } from './MonthDate';
 import type { PanelAnchor } from './popoverLayout';
 import { EventMark } from './EventMark';
-import { eventDateRange, weekEventSpans } from '../calendar/eventDisplay';
+import { weekDisplay } from '../calendar/weekDisplay';
 
 interface Props {
   now: number; month: string; firstDay: number; timezone: string; selected: string; timeFormat: '24' | '12';
@@ -25,8 +25,7 @@ export const MonthGrid = memo(function MonthGrid(p: Props) {
   const popupOpener = useRef<HTMLElement | null>(null);
   const days = useMemo(() => monthDays(p.month, p.firstDay, p.timezone), [p.month, p.firstDay, p.timezone]);
   const groups = useMemo(() => groupMonthEvents(p.events, days, p.timezone), [p.events, days, p.timezone]);
-  const weeks = useMemo(() => Array.from({ length: 6 }, (_, row) => weekEventSpans(p.events, days.slice(row * 7, row * 7 + 7), p.timezone)), [p.events, days, p.timezone]);
-  const spanCapacity = layout.capacity;
+  const weeks = useMemo(() => Array.from({ length: 6 }, (_, row) => weekDisplay(p.events, days.slice(row * 7, row * 7 + 7), groups, p.timezone, layout.capacity)), [p.events, days, groups, p.timezone, layout.capacity]);
   const colors = useMemo(() => new Map(p.calendars.map(calendar => [calendar.id, calendar])), [p.calendars]);
   const today = DateTime.now().setZone(p.timezone).toISODate();
   useLayoutEffect(() => {
@@ -72,11 +71,7 @@ export const MonthGrid = memo(function MonthGrid(p: Props) {
     <div className="month-scroll"><div ref={grid} className={`month-grid ${layout.inlineOverflow ? 'inline-overflow' : ''}`} style={{ '--event-lane-height': `${MONTH_EVENT_LANE}px` } as CSSProperties} role="rowgroup" aria-label="月视图日期与日程" data-event-mode="capsules">
       {Array.from({ length: 6 }, (_, row) => <div role="row" className="month-week-row" key={row}>{days.slice(row * 7, row * 7 + 7).map(day => {
         const list = groups.get(day)!, dt = DateTime.fromISO(day, { zone: p.timezone });
-        const spans = weeks[row].filter(span => span.lane < spanCapacity && day >= days[row * 7 + span.start] && day <= days[row * 7 + span.end]);
-        const reserved = spans.reduce((count, span) => Math.max(count, span.lane + 1), 0);
-        const singleDay = list.filter(event => { const range = eventDateRange(event, p.timezone); return !event.draft && range.start === range.end; });
-        const limit = Math.max(0, layout.capacity - reserved);
-        const visible = singleDay.slice(0, limit), overflow = list.length - visible.length - spans.length;
+        const { visible, reserved, overflow } = weeks[row].cells[days.indexOf(day) % 7];
         return <div role="gridcell" tabIndex={0} aria-selected={false} aria-label={`${dt.setLocale('zh-CN').toFormat('M月d日 cccc')}，${list.length} 项日程`} data-date={day} key={day}
           className={`month-cell ${day.slice(0, 7) !== p.month.slice(0, 7) ? 'other-month' : ''} ${day === today ? 'is-today' : ''} ${dt.weekday > 5 ? 'weekend' : ''} ${dragOver === day ? 'drop-target' : ''} ${overflow > 0 ? 'has-overflow' : ''}`}
           onDoubleClick={e => { if (!(e.target as HTMLElement).closest('button')) { p.select(day); p.create(day, undefined, false, e.currentTarget.getBoundingClientRect()); } }}
@@ -93,7 +88,7 @@ export const MonthGrid = memo(function MonthGrid(p: Props) {
             {overflow > 0 && <button className="month-more" type="button" aria-label={`${day} 查看全部 ${list.length} 项日程`} onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); expand(day, e.currentTarget); }} onDoubleClick={e => e.stopPropagation()}>+{overflow}个</button>}
           </div>
         </div>;
-      })}<div className="month-span-layer">{weeks[row].filter(span => span.lane < spanCapacity).map(span => <div key={span.event.id} className={`month-span ${span.continuesLeft ? 'continues-left' : ''} ${span.continuesRight ? 'continues-right' : ''}`} data-start={days[row * 7 + span.start]} data-end={days[row * 7 + span.end]} style={{ gridColumn: `${span.start + 1} / ${span.end + 2}`, gridRow: span.lane + 1 }}>{eventButton(span.event, days[row * 7 + span.start])}</div>)}</div></div>)}
+      })}<div className="month-span-layer">{weeks[row].segments.map(span => <div key={`${span.event.id}:${span.start}`} className={`month-span ${span.continuesLeft ? 'continues-left' : ''} ${span.continuesRight ? 'continues-right' : ''}`} data-start={days[row * 7 + span.start]} data-end={days[row * 7 + span.end]} style={{ gridColumn: `${span.start + 1} / ${span.end + 2}`, gridRow: span.lane + 1 }}>{eventButton(span.event, days[row * 7 + span.start])}</div>)}</div></div>)}
     </div></div>
     {expanded && <div ref={popup} className="day-agenda" role="dialog" aria-modal="false" aria-label={`${expanded} 的全部日程`}>
       <header><div><strong>{DateTime.fromISO(expanded).setLocale('zh-CN').toFormat('M月d日 cccc')}</strong><span>{groups.get(expanded)?.length || 0} 项日程</span></div><button className="icon-button" aria-label="关闭当天日程" ref={closeButton} onClick={() => { setExpanded(null); popupOpener.current?.focus(); }}><X size={17}/></button></header>
