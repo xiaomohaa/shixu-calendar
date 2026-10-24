@@ -1,5 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import type { Api, CalendarEvent, EventInput, Result, Snapshot } from '../shared/contracts';
 import { defaultSettings, eventInput } from '../shared/contracts';
 import type { DesktopState, UpdateState } from '../shared/updates';
@@ -10,7 +11,7 @@ import { DateTime } from 'luxon';
 
 declare global { interface Window { __TAURI_INTERNALS__?: unknown } }
 
-if (window.__TAURI_INTERNALS__) {
+if (window.__TAURI_INTERNALS__ && getCurrentWindow().label === 'main') {
   let diagnostics: string[] = [];
   const call = async <T>(method: string, ...args: unknown[]): Promise<T> => {
     const result = await invoke<Result<T>>('shixu_call', { method, args });
@@ -37,6 +38,9 @@ if (window.__TAURI_INTERNALS__) {
     desktopState: () => call<DesktopState>('desktopState'),
     setAutoStart: enabled => call<DesktopState>('setAutoStart', enabled),
     quitApp: () => call('quitApp'),
+    testNotification: () => call('testNotification'),
+    takeReminderOpen: () => call('takeReminderOpen'),
+    onOpenReminder: callback => subscribe('shixu:open-reminder', callback),
     snapshot: async () => ({ ...(await call<Snapshot>('snapshot', defaultSettings)), diagnostics }),
     events: async (start, end) => {
       const input = await call<{ resources: Resource[]; visibleCalendars: string[]; conflictResources: string[]; timezone: string }>('eventResources', defaultSettings);
@@ -102,7 +106,7 @@ if (window.__TAURI_INTERNALS__) {
         if (key.length > 2000) continue;
         const time = event.allDay ? '全天' : DateTime.fromMillis(start).setZone(input.timezone).toFormat('HH:mm');
         const body = `${time} ${event.location}`.trim().slice(0, 2000);
-        try { await call('notifyReminder', key, event.title.slice(0, 500), body); }
+        try { await call('notifyReminder', key, event.title.slice(0, 500), body, { resourceId:event.resourceId,recurrenceId:event.recurrenceId,start:event.start,allDay:event.allDay }); }
         catch { /* A failed notification should not suppress other due events. */ }
       }
     } catch { /* Reminder processing retries on the next native tick. */ }

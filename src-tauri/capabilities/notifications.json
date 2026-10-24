@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "reminder-notifications",
+  "description": "Reminder windows may listen only to their own display events. Calendar IPC is rejected by its originating window label.",
+  "windows": ["reminder-*"],
+  "permissions": ["core:event:allow-listen", "core:event:allow-unlisten"]
+}

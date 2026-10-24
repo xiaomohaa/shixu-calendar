@@ -7,9 +7,13 @@ import { newEventTime } from '../calendar/newEventTime';
 import { editorTime, sourceTime } from '../calendar/editorTime';
 import { EventDateTime } from './EventDateTime';
 
-export function Editor({ initial, calendars, close, saved, anchor, duration = 60, changed, displayTimezone }: { initial: EventInput; calendars: Calendar[]; close: () => void; saved: () => void; anchor?: PanelAnchor; duration?: number; changed?: (draft: EventInput) => void; displayTimezone: string }) {
+export function Editor({ initial, calendars, close, saved, anchor, duration = 60, changed, displayTimezone, registerCloseGuard }: { initial: EventInput; calendars: Calendar[]; close: () => void; saved: () => void; anchor?: PanelAnchor; duration?: number; changed?: (draft: EventInput) => void; displayTimezone: string; registerCloseGuard?: (guard: () => boolean) => void }) {
   const [form, setForm] = useState(initial), [busy, setBusy] = useState(false), [error, setError] = useState(''), [confirmDelete, setConfirmDelete] = useState(false);
   const titleInput = useRef<HTMLTextAreaElement>(null), dirty = useRef(false);
+  useEffect(() => {
+    registerCloseGuard?.(() => !dirty.current || window.confirm('打开提醒中的日程？当前未保存的修改将被放弃。'));
+    return () => registerCloseGuard?.(() => true);
+  },[registerCloseGuard]);
   useEffect(() => { if (!form.resourceId) changed?.(form); }, [form, changed]);
   useLayoutEffect(() => { const input = titleInput.current; if (input) { input.style.height = 'auto'; input.style.height = `${Math.max(48, Math.min(100, input.scrollHeight))}px`; } }, [form.title]);
   const set = <K extends keyof EventInput>(key: K, value: EventInput[K]) => { dirty.current = true; setForm(f => ({ ...f, [key]: value })); };

@@ -1,0 +1,3 @@
+.reminder-mode-options { display:flex; flex-direction:column; gap:8px; margin-bottom:10px; }
+.desktop-window .settings-panel .settings-content .reminder-settings input[type="radio"] { width:14px; height:14px; padding:0; margin:0; flex:none; box-shadow:none; accent-color:var(--accent); }
+.desktop-window .settings-panel .settings-content .reminder-settings .check-row { min-height:24px; gap:8px; }

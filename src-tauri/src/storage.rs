@@ -5,6 +5,9 @@ use serde_json::{Value, json};
 use std::{collections::HashSet, path::Path};
 use uuid::Uuid;
 
+#[path = "reminder_store.rs"]
+mod reminder_store;
+
 const SCHEMA_VERSION: i64 = 1;
 
 pub struct Store {
@@ -71,6 +74,12 @@ struct Settings {
     show_sidebar_events: bool,
     #[serde(default)]
     silent_startup: bool,
+    #[serde(default = "default_notification_mode")]
+    notification_mode: String,
+}
+
+fn default_notification_mode() -> String {
+    "system".into()
 }
 
 fn default_show_almanac() -> bool {
@@ -79,7 +88,8 @@ fn default_show_almanac() -> bool {
 
 impl Settings {
     fn validate(&self) -> Result<(), String> {
-        if !matches!(self.theme.as_str(), "system" | "light" | "dark")
+        if !matches!(self.notification_mode.as_str(), "system" | "floating")
+            || !matches!(self.theme.as_str(), "system" | "light" | "dark")
             || !matches!(
                 self.view.as_str(),
                 "dayGridMonth" | "timeGridWeek" | "timeGridDay" | "multiMonthYear" | "listMonth"
@@ -109,6 +119,7 @@ impl Store {
         let mut store = Self { db };
         store.migrate()?;
         store.db.execute_batch("CREATE TABLE IF NOT EXISTS ics_subscriptions(accountId TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE)")?;
+        store.init_reminder_deliveries()?;
         Ok(store)
     }
 
@@ -445,10 +456,6 @@ impl Store {
             )
             .map_err(|_| "保存提醒记录失败")?;
         Ok(changed == 1)
-    }
-
-    pub fn release_reminder(&self, key: &str) {
-        let _ = self.db.execute("DELETE FROM reminders WHERE key=?", [key]);
     }
 
     pub fn event_resource(&self, id: &str) -> Result<Value, String> {
@@ -1185,12 +1192,15 @@ mod tests {
         let old_settings = copied.snapshot(json!({})).unwrap();
         assert_eq!(old_settings["settings"]["showSidebarEvents"], true);
         assert_eq!(old_settings["settings"]["silentStartup"], false);
+        assert_eq!(old_settings["settings"]["notificationMode"], "system");
         let mut new_settings = settings.clone();
         new_settings["silentStartup"] = json!(true);
         new_settings["showSidebarEvents"] = json!(false);
         new_settings["view"] = json!("multiMonthYear");
+        new_settings["notificationMode"] = json!("floating");
         copied.set_settings(new_settings).unwrap();
         assert!(copied.silent_startup());
+        assert_eq!(copied.reminder_preferences().0, "floating");
         assert_eq!(
             copied.snapshot(json!({})).unwrap()["settings"]["view"],
             "multiMonthYear"

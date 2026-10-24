@@ -34,7 +34,7 @@ chrono-tz = "=0.10.4"
 aes-gcm = "=0.10.3"
 base64 = "=0.22.1"
 zeroize = "=1.8.2"
-windows = { version = "=0.62.2", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }
+windows = { version = "=0.62.2", features = ["Win32_Foundation", "Win32_Security_Cryptography", "Win32_UI_WindowsAndMessaging", "Win32_UI_HiDpi"] }
 reqwest = { version = "=0.12.24", features = ["gzip"] }
 roxmltree = "=0.21.1"
 uuid = { version = "=1.29.0", features = ["v4"] }

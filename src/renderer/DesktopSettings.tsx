@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ReminderSettings } from './ReminderSettings';
 import type { DesktopState } from '../shared/updates';
 
 export function DesktopSettings() {
@@ -13,6 +14,7 @@ export function DesktopSettings() {
     {desktop?.openAtLogin && !desktop.startupEnabled && <p className="error-box">启动项已保存，但被 Windows 禁用。请在任务管理器的“启动应用”中启用时序日历。</p>}
     <div className="settings-group"><label className="check-row"><input type="checkbox" disabled={busy} checked={silentStartup} onChange={e => { const checked = e.target.checked; void act(async () => { const s = await window.shixu.snapshot(); await window.shixu.settings({ ...s.settings, silentStartup: checked }); setSilentStartup(checked); }); }}/>静默启动</label><p className="form-hint">下次启动时直接进入系统托盘，不打开主窗口。点击托盘图标或再次启动应用可打开日历。后台同步和提醒继续运行。</p></div>
     <div className="settings-group"><label className="check-row"><input type="checkbox" disabled={busy} checked={closeToTray} onChange={e => { const checked = e.target.checked; void act(async () => { const s = await window.shixu.snapshot(); await window.shixu.settings({ ...s.settings, closeToTray: checked }); setCloseToTray(checked); }); }}/>关闭窗口后收纳到系统托盘</label><p className="form-hint">收纳后同步和日程提醒继续运行。点击右下角托盘图标打开日历；右键选择“退出时序日历”可彻底退出。若图标隐藏，请展开托盘箭头。</p></div>
+    <ReminderSettings/>
     <div className="settings-group"><button disabled={busy} onClick={() => void act(() => window.shixu.quitApp())}>退出时序日历</button><p className="form-hint">退出前会停止同步并保存本地数据，未同步修改下次启动仍可继续提交。</p></div>
   </section>;
 }

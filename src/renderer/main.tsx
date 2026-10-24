@@ -1,7 +1,7 @@
 import React from 'react';
 import '../platform/tauri';
 import { createRoot } from 'react-dom/client';
-import { App } from './App';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import './styles.css';
 import './almanac.css';
 import './desktop.css';
@@ -15,4 +15,11 @@ import './liquid-glass.css';
 import './compact-toolbar.css';
 import './time-blocks.css';
 import './reference-editor.css';
-createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);
+const root = createRoot(document.getElementById('root')!);
+const notification = !!window.__TAURI_INTERNALS__ && getCurrentWindow().label.startsWith('reminder-');
+if (notification) {
+  document.documentElement.dataset.surface = 'notification';
+  void import('./NotificationToast').then(({ NotificationToast }) => root.render(<React.StrictMode><NotificationToast/></React.StrictMode>));
+} else {
+  void import('./App').then(({ App }) => root.render(<React.StrictMode><App/></React.StrictMode>));
+}

@@ -50,6 +50,8 @@ export function App() {
   const calendarRef = useRef<FullCalendar>(null), range = useRef({ start: DateTime.now().setZone(DEFAULT_TIMEZONE).startOf('month').minus({ days: 7 }).toISO()!, end: DateTime.now().setZone(DEFAULT_TIMEZONE).endOf('month').plus({ days: 7 }).toISO()! });
   const loadId = useRef(0), booted = useRef(false);
   const calendarContainer = useRef<HTMLDivElement>(null);
+  const reminderGuard = useRef<() => boolean>(() => true);
+  const registerReminderGuard = useCallback((guard: () => boolean) => { reminderGuard.current = guard; },[]);
   const refresh = useCallback(async () => {
     if (!window.shixu) { setError('请使用桌面应用打开此日历。浏览器预览无法访问本地数据库。'); setLoading(false); return; }
     const id = ++loadId.current;
@@ -124,6 +126,26 @@ export function App() {
       try { const input = await window.shixu.eventDetail(ev.resourceId, ev.recurring ? 'instance' : 'series', ev.recurrenceId); const start = info.event.startStr; const end = info.event.endStr || DateTime.fromISO(start).plus({ minutes: snapshot!.settings.duration }).toISO()!; await window.shixu.saveEvent({ ...input, start: info.event.allDay ? start.slice(0, 10) : start, end: info.event.allDay ? end.slice(0, 10) : end, allDay: info.event.allDay }); setNotice('时间已调整，等待同步'); } catch (e) { info.revert(); throw e; }
     });
   };
+  useEffect(() => {
+    if (!window.shixu.takeReminderOpen) return;
+    let handling = false, queued = false;
+    const open = async () => {
+      if (handling) { queued = true; return; } handling = true;
+      try {
+        const reference = await window.shixu.takeReminderOpen!(); if (!reference) return;
+        if (!reminderGuard.current()) return;
+        const [state,detail] = await Promise.all([window.shixu.snapshot(),window.shixu.eventDetail(reference.resourceId,reference.recurrenceId ? 'instance' : 'series',reference.recurrenceId)]);
+        const date = detail.allDay ? detail.start.slice(0,10) : DateTime.fromISO(detail.start,{ zone:detail.timezone }).setZone(state.settings.timezone).toISODate()!;
+        setSelected(date); setMonth(DateTime.fromISO(date).startOf('month').toISODate()!); setMiniMonth(DateTime.fromISO(date).startOf('month')); setView('dayGridMonth');
+        setQuery(''); setSearchOpen(false); setSettingsTab(null); setDraft(null); setEditorAnchor(undefined);
+        setEditor(detail);
+      } catch (error) { setError((error as Error).message); }
+      finally { handling = false; if (queued) { queued = false; void open(); } }
+    };
+    const stop = window.shixu.onOpenReminder?.(() => void open());
+    window.addEventListener('focus',open); void open();
+    return () => { stop?.(); window.removeEventListener('focus',open); };
+  }, []);
   const prefs = snapshot?.settings;
   const filtered = useMemo(() => events.filter(e => `${e.title} ${e.location} ${e.description}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())), [events, query]);
   const preview = useMemo(() => draftEvent(draft, prefs?.duration ?? 60), [draft, prefs?.duration]);
@@ -197,6 +219,6 @@ export function App() {
       />}</div>
     </main>
     {notice && <div className="toast" role="status"><CircleCheck size={17}/>{notice}</div>}
-    {editor && snapshot && <Editor key={`${editor.resourceId ?? 'new'}:${editor.start}`} initial={editor} displayTimezone={snapshot.settings.timezone} anchor={editorAnchor} duration={snapshot.settings.duration} changed={updateDraft} calendars={snapshot.calendars} close={() => { setEditor(null); setDraft(null); }} saved={() => { setNotice('日程已保存在本地'); void refresh(); }}/>} {settingsTab && snapshot && <SettingsPanel snapshot={snapshot} close={() => setSettingsTab(null)} refresh={() => void refresh()} initialTab={settingsTab}/>}
+    {editor && snapshot && <Editor key={`${editor.resourceId ?? 'new'}:${editor.start}`} initial={editor} registerCloseGuard={registerReminderGuard} displayTimezone={snapshot.settings.timezone} anchor={editorAnchor} duration={snapshot.settings.duration} changed={updateDraft} calendars={snapshot.calendars} close={() => { setEditor(null); setDraft(null); }} saved={() => { setNotice('日程已保存在本地'); void refresh(); }}/>} {settingsTab && snapshot && <SettingsPanel snapshot={snapshot} close={() => setSettingsTab(null)} refresh={() => void refresh()} initialTab={settingsTab}/>}
   </div></div>;
 }

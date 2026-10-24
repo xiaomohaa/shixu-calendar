@@ -1,5 +1,6 @@
 mod dav;
 mod feeds;
+mod notifications;
 mod storage;
 mod updates;
 #[cfg(windows)]
@@ -275,7 +276,11 @@ async fn shixu_call(
     store: tauri::State<'_, Mutex<storage::Store>>,
     syncing: tauri::State<'_, SyncTracker>,
     app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
 ) -> Result<Value, String> {
+    if window.label() != "main" {
+        return Err("此窗口不能访问日历命令".into());
+    }
     if method == "updateState" {
         if !args.is_empty() {
             return Ok(json!({"ok":false,"error":"更新参数无效"}));
@@ -335,6 +340,7 @@ async fn shixu_call(
                 | "clearCache"
                 | "restore"
                 | "notifyReminder"
+                | "testNotification"
         )
     {
         return Ok(json!({"ok":false,"error":"更新正在安装，请稍后再修改数据"}));
@@ -648,9 +654,28 @@ async fn shixu_call(
             Err(error) => json!({"ok":false,"error":error}),
         });
     }
+    if method == "takeReminderOpen" {
+        if !args.is_empty() {
+            return Err("提醒操作参数无效".into());
+        }
+        return Ok(json!({"ok":true,"value":notifications::take_open(&app)?}));
+    }
+    if method == "testNotification" {
+        if !args.is_empty() {
+            return Err("测试通知参数无效".into());
+        }
+        let notice = notifications::Notice::new(
+            format!("test:{}", uuid::Uuid::new_v4()),
+            "测试日程提醒".into(),
+            "这是一条测试日程提醒，用于确认当前通知方式。".into(),
+            None,
+            true,
+        )?;
+        return Ok(json!({"ok":true,"value":notifications::enqueue(&app,notice)?}));
+    }
     if method == "notifyReminder" {
         let result: Result<Value, String> = (|| {
-            if args.len() != 3 {
+            if args.len() != 3 && args.len() != 4 {
                 return Err("提醒参数无效".into());
             }
             let (Some(key), Some(title), Some(body)) =
@@ -658,31 +683,17 @@ async fn shixu_call(
             else {
                 return Err("提醒参数无效".into());
             };
-            if title.is_empty() || title.len() > 500 || body.len() > 2000 {
-                return Err("提醒内容无效".into());
-            }
-            let claimed = store
-                .lock()
-                .map_err(|_| "本地数据库暂时不可用")?
-                .claim_reminder(key)?;
-            if !claimed {
-                return Ok(json!(false));
-            }
-            if app
-                .notification()
-                .builder()
-                .title(title)
-                .body(body)
-                .show()
-                .is_err()
-            {
-                store
-                    .lock()
-                    .map_err(|_| "本地数据库暂时不可用")?
-                    .release_reminder(key);
-                return Err("系统通知暂时不可用".into());
-            }
-            Ok(json!(true))
+            let event = if args.len() == 4 {
+                Some(
+                    serde_json::from_value::<notifications::EventReference>(args[3].clone())
+                        .map_err(|_| "提醒日程参数无效")?,
+                )
+            } else {
+                None
+            };
+            let notice =
+                notifications::Notice::new(key.into(), title.into(), body.into(), event, false)?;
+            notifications::enqueue(&app, notice).map(|accepted| json!(accepted))
         })();
         return Ok(match result {
             Ok(value) => json!({"ok":true,"value":value}),
@@ -843,10 +854,20 @@ pub fn run() {
             let silent_startup = store.silent_startup();
             app.manage(Mutex::new(store));
             app.manage(SyncTracker::default());
+            app.manage(notifications::Notifications::default());
             app.manage(updates::Updates::new(
                 app.package_info().version.to_string(),
                 app.config().identifier.ends_with(".dev"),
             ));
+            let notification_app = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    if !notification_app.state::<updates::Updates>().is_installing() {
+                        notifications::maintain(&notification_app);
+                    }
+                }
+            });
             let background_app = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let mut last_auto: Option<std::time::Instant> = None;
@@ -899,7 +920,11 @@ pub fn run() {
             let notification_app = app.handle().clone();
             app.notification().on_action(move |action| {
                 if action.action_id() == "tap" {
-                    show_main(&notification_app);
+                    let key = action
+                        .notification()
+                        .and_then(|notice| notice.extra().get("shixuReminderKey"))
+                        .and_then(Value::as_str);
+                    notifications::native_clicked(&notification_app, key);
                 }
             })?;
             app.handle()
@@ -956,6 +981,12 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            if matches!(event, tauri::WindowEvent::Destroyed) {
+                notifications::closed(window.app_handle(), window.label());
+            }
+            if window.label() != "main" {
+                return;
+            }
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let close_to_tray = window
                     .app_handle()
@@ -971,7 +1002,10 @@ pub fn run() {
                 }
             }
         })
-        .invoke_handler(tauri::generate_handler![shixu_call])
+        .invoke_handler(tauri::generate_handler![
+            shixu_call,
+            notifications::notification_call
+        ])
         .run(tauri::generate_context!())
         .expect("error while building tauri application");
 }

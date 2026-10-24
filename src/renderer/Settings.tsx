@@ -23,6 +23,7 @@ export function SettingsPanel({ snapshot: s, close, refresh, initialTab = 'accou
   useEffect(() => { setPrefs(p => ({ ...p, boldText: s.settings.boldText })); }, [s.settings.boldText]);
   useEffect(() => { setPrefs(p => ({ ...p, showAlmanac: s.settings.showAlmanac, showSidebarEvents: s.settings.showSidebarEvents })); }, [s.settings.showAlmanac, s.settings.showSidebarEvents]);
   useEffect(() => { setPrefs(p => ({ ...p, autoUpdateCheck: s.settings.autoUpdateCheck, closeToTray: s.settings.closeToTray, silentStartup: s.settings.silentStartup })); }, [s.settings.autoUpdateCheck, s.settings.closeToTray, s.settings.silentStartup]);
+  useEffect(() => { setPrefs(p => ({ ...p, notificationMode: s.settings.notificationMode })); }, [s.settings.notificationMode]);
   const set = <K extends keyof Preferences>(key: K, value: Preferences[K]) => setPrefs(p => ({ ...p, [key]: value }));
   const act = async (fn: () => Promise<unknown>, message = '') => { setBusy(true); setError(''); setMessage(''); try { await fn(); setMessage(message); refresh(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
   const savePrefs = () => act(() => window.shixu.settings(prefs), '设置已保存');

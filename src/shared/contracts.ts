@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { DesktopState, UpdateState } from './updates';
+import type { ReminderEvent } from './reminders';
 export const DEFAULT_TIMEZONE = 'Asia/Shanghai';
 
 export const accountInput = z.object({
@@ -22,9 +23,10 @@ export const settingsSchema = z.object({
   showAlmanac: z.boolean().default(true),
   showSidebarEvents: z.boolean().default(true),
   silentStartup: z.boolean().default(false),
+  notificationMode: z.enum(['system', 'floating']).default('system'),
 });
 export type Settings = z.infer<typeof settingsSchema>;
-export const defaultSettings: Settings = { theme: 'system', view: 'dayGridMonth', firstDay: 1, duration: 60, reminder: 15, timezone: DEFAULT_TIMEZONE, autoSync: true, interval: 10, defaultCalendar: '', timeFormat: '24', dateFormat: 'chinese', autoUpdateCheck: true, closeToTray: true, boldText: false, showAlmanac: true, showSidebarEvents: true, silentStartup: false };
+export const defaultSettings: Settings = { theme: 'system', view: 'dayGridMonth', firstDay: 1, duration: 60, reminder: 15, timezone: DEFAULT_TIMEZONE, autoSync: true, interval: 10, defaultCalendar: '', timeFormat: '24', dateFormat: 'chinese', autoUpdateCheck: true, closeToTray: true, boldText: false, showAlmanac: true, showSidebarEvents: true, silentStartup: false, notificationMode: 'system' };
 export const eventInput = z.object({
   resourceId: z.string().optional(), calendarId: z.string().min(1), uid: z.string().optional(),
   title: z.string().trim().min(1, '请输入日程标题').max(500), start: z.string().min(10), end: z.string().min(10),
@@ -51,6 +53,9 @@ export interface Api {
   desktopState(): Promise<DesktopState>;
   setAutoStart(enabled: boolean): Promise<DesktopState>;
   quitApp(): Promise<void>;
+  testNotification?(): Promise<void>;
+  takeReminderOpen?(): Promise<ReminderEvent | null>;
+  onOpenReminder?(callback: () => void): () => void;
   snapshot(): Promise<Snapshot>;
   events(start: string, end: string): Promise<CalendarEvent[]>;
   eventDetail(resourceId: string, scope: 'series' | 'instance', recurrenceId?: string): Promise<EventInput>;
