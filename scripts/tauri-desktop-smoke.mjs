@@ -70,7 +70,7 @@ try {
     panel: getComputedStyle(document.querySelector('.sidebar')).backgroundColor,
     glass: getComputedStyle(document.querySelector('.view-switch')).backdropFilter,
   }));
-  if (detail.sidebar !== '10px' || detail.today !== '10px' || detail.views.some(font => font !== '10px') || detail.lunar !== '12px' || detail.solar !== '12px' || detail.cap !== detail.panel || !detail.glass.includes('blur')) throw new Error(`Requested typography/glass/sidebar cap mismatch: ${JSON.stringify(detail)}`);
+  if (detail.sidebar !== '10px' || detail.today !== '10px' || detail.views.some(font => font !== '10px') || detail.lunar !== '10px' || detail.solar !== '12px' || detail.cap !== detail.panel || !detail.glass.includes('blur')) throw new Error(`Requested typography/glass/sidebar cap mismatch: ${JSON.stringify(detail)}`);
   if ((await page.locator('.window-drag-region').textContent()).trim()) throw new Error('Titlebar label was not removed');
   await page.getByRole('button', { name: '年', exact: true }).click();
   await page.locator('.year-grid').waitFor();

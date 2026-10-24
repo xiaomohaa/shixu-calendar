@@ -5,11 +5,12 @@ import type { Calendar, CalendarEvent } from '../shared/contracts';
 import { groupMonthEvents, monthDays, monthLayout, MONTH_EVENT_LANE } from '../calendar/monthLayout';
 import { MonthDate } from './MonthDate';
 import type { PanelAnchor } from './popoverLayout';
-import { eventDateRange, eventHasEnded, weekEventSpans } from '../calendar/eventDisplay';
+import { EventMark } from './EventMark';
+import { eventDateRange, weekEventSpans } from '../calendar/eventDisplay';
 
 interface Props {
   now: number; month: string; firstDay: number; timezone: string; selected: string; timeFormat: '24' | '12';
-  events: CalendarEvent[]; calendars: Calendar[];
+  events: CalendarEvent[]; calendars: Calendar[]; holidays: Set<string>;
   select(date: string): void; create(start: string, end?: string, allDay?: boolean, anchor?: PanelAnchor): void;
   open(event: CalendarEvent): void; move(event: CalendarEvent, day: string, origin: string): void;
 }
@@ -49,7 +50,7 @@ export const MonthGrid = memo(function MonthGrid(p: Props) {
   const expand = (day: string, opener: HTMLElement) => { p.select(day); popupOpener.current = opener; setExpanded(day); };
   const color = (event: CalendarEvent) => colors.get(event.calendarId)?.color || '#d65c4f';
   const isWritable = (event: CalendarEvent) => !event.draft && !colors.get(event.calendarId)?.readOnly && !event.conflict;
-  const eventButton = (event: CalendarEvent, day: string) => <button key={event.id} type="button" className={`month-event ${event.allDay ? 'event-capsule event-all-day' : 'event-timed'} ${event.draft ? 'event-draft' : ''} ${event.pending ? 'event-pending' : ''} ${event.conflict ? 'event-conflict' : ''} ${!event.draft && eventHasEnded(event, p.timezone, p.now) ? 'event-ended' : ''}`}
+  const eventButton = (event: CalendarEvent, day: string) => <button key={event.id} type="button" className={`month-event ${event.allDay ? 'event-capsule event-all-day' : 'event-timed'} ${event.draft ? 'event-draft' : ''} ${event.pending ? 'event-pending' : ''} ${event.conflict ? 'event-conflict' : ''} `}
     style={{ '--event-color': color(event) } as CSSProperties} aria-label={`${timeLabel(event, p.timezone, p.timeFormat)} ${event.title}${event.pending ? '，待同步' : ''}`}
     title={`${timeLabel(event, p.timezone, p.timeFormat)} ${event.title}${event.location ? ` · ${event.location}` : ''}`} draggable={isWritable(event)}
     onPointerDown={e => e.stopPropagation()} onDragStart={e => {
@@ -64,7 +65,7 @@ export const MonthGrid = memo(function MonthGrid(p: Props) {
       e.dataTransfer.effectAllowed = 'move';
     }}
     onClick={e => { e.stopPropagation(); if (!event.draft) p.open(event); }} onDoubleClick={e => e.stopPropagation()}>
-    <i className="event-color-dot"/>{<><span className="month-event-title">{event.title}</span>{event.recurring && <Repeat2 size={11}/>} {event.pending && <span className="pending-mark" aria-hidden="true">·</span>}</>}
+    <EventMark allDay={event.allDay} holiday={p.holidays.has(event.calendarId)}/><span className="month-event-title">{event.title}</span>{event.recurring && <Repeat2 size={11}/>} {event.pending && <span className="pending-mark" aria-hidden="true">·</span>}
   </button>;
   return <section className="month-view" role="grid" aria-label="月日历">
     <div className="month-weekdays" role="row">{Array.from({ length: 7 }, (_, i) => { const day = (p.firstDay + i) % 7; return <span role="columnheader" className={day === 0 || day === 6 ? 'weekend' : ''} key={day}>周{['日','一','二','三','四','五','六'][day]}</span>; })}</div>
@@ -96,7 +97,7 @@ export const MonthGrid = memo(function MonthGrid(p: Props) {
     </div></div>
     {expanded && <div ref={popup} className="day-agenda" role="dialog" aria-modal="false" aria-label={`${expanded} 的全部日程`}>
       <header><div><strong>{DateTime.fromISO(expanded).setLocale('zh-CN').toFormat('M月d日 cccc')}</strong><span>{groups.get(expanded)?.length || 0} 项日程</span></div><button className="icon-button" aria-label="关闭当天日程" ref={closeButton} onClick={() => { setExpanded(null); popupOpener.current?.focus(); }}><X size={17}/></button></header>
-      <div className="day-agenda-list">{groups.get(expanded)?.map(event => <button className={`agenda-event ${!event.draft && eventHasEnded(event, p.timezone, p.now) ? 'event-ended' : ''}`} style={{ '--event-color': color(event) } as CSSProperties} key={event.id} onClick={() => { setExpanded(null); p.open(event); }}><i className="event-color-dot"/><div><strong>{event.title}</strong></div>{event.pending && <small>待同步</small>}</button>)}</div>
+      <div className="day-agenda-list">{groups.get(expanded)?.map(event => <button className="agenda-event" style={{ '--event-color': color(event) } as CSSProperties} key={event.id} onClick={() => { setExpanded(null); p.open(event); }}><EventMark allDay={event.allDay} holiday={p.holidays.has(event.calendarId)}/><div><strong>{event.title}</strong></div>{event.pending && <small>待同步</small>}</button>)}</div>
       <button className="agenda-create" onClick={() => { setExpanded(null); p.create(expanded, undefined, true); }}><Plus size={15}/>新建日程</button>
     </div>}
   </section>;

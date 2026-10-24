@@ -1,0 +1,127 @@
+/* Shared optical surfaces. Blur the panes, rather than every calendar cell. */
+:root {
+  --glass-surface:color-mix(in oklab,var(--bg) 86%,transparent);
+  --glass-pane:color-mix(in oklab,var(--field) 80%,transparent);
+  --glass-sidebar:color-mix(in oklab,var(--panel) 82%,transparent);
+  --glass-edge:color-mix(in oklab,var(--field) 86%,transparent);
+  --glass-line:color-mix(in oklab,var(--line) 65%,transparent);
+  --glass-shadow:inset 0 1px 1px var(--glass-edge),0 10px 32px color-mix(in oklab,var(--text) 9%,transparent);
+  --glass-control:linear-gradient(155deg,color-mix(in oklab,var(--field) 92%,transparent),color-mix(in oklab,var(--panel) 55%,transparent));
+}
+.desktop-window { background:linear-gradient(145deg,oklch(96.5% .007 245),oklch(99% .003 65) 52%,oklch(96% .008 70)); }
+:root[data-theme="dark"] .desktop-window { background:linear-gradient(145deg,oklch(21% .009 245),oklch(25% .006 65) 52%,oklch(20% .008 70)); }
+.desktop-window .window-chrome, .app-shell .toolbar, .app-shell .calendar-heading, .app-shell .month-weekdays { background:var(--glass-surface); }
+.desktop-window .window-chrome::before, .desktop-window .app-shell .sidebar { background:var(--glass-sidebar); }
+.desktop-window .app-shell .sidebar { backdrop-filter:blur(24px) saturate(1.2); border-color:var(--glass-line); }
+.desktop-window .main-content { background:transparent; }
+.desktop-window .calendar-container { background:color-mix(in oklab,var(--bg) 45%,transparent); backdrop-filter:blur(16px) saturate(1.12); }
+.desktop-window .month-cell { background:color-mix(in oklab,var(--bg) 72%,transparent); }
+.desktop-window .month-cell.weekend { background:color-mix(in oklab,var(--weekend-bg) 74%,transparent); }
+.desktop-window .app-shell .month-day-button .lunar-date { font-size:10px; color:var(--event-text); font-weight:400; }
+.desktop-window .app-shell .event-capsule { background:linear-gradient(180deg,color-mix(in oklab,var(--event-color) 13%,var(--field)),color-mix(in oklab,var(--event-color) 23%,var(--bg))); box-shadow:inset 0 1px 1px var(--glass-edge); }
+.event-symbol { width:12px; height:12px; flex:none; display:inline-grid; place-items:center; border-radius:50%; background:var(--event-color); color:oklch(99% .002 65); box-shadow:inset 0 1px 1px color-mix(in oklab,var(--field) 50%,transparent); }
+.event-symbol svg { display:block; }
+.event-color-bar { width:3px; height:12px; border-radius:2px; border:0; background:var(--event-color); flex:none; }
+.app-shell .fc .event-timed .calendar-event-content::before { content:none; }
+.app-shell .fc .fc-list-event-graphic { display:none; }
+.desktop-window .day-agenda, .desktop-window .app-shell .search-bar, .desktop-window .floating-editor { background:var(--glass-pane); backdrop-filter:blur(26px) saturate(1.35); border-color:var(--glass-edge); box-shadow:var(--glass-shadow); }
+.desktop-window .app-shell .toolbar .view-switch { background:var(--glass-control); border-color:var(--glass-line); }
+.desktop-window .window-actions button { background:var(--glass-control); }
+
+/* A single settings sheet, with grouped navigation and aligned content rows. */
+.panel-backdrop:has(.settings-panel) { background:color-mix(in oklab,var(--text) 8%,transparent); backdrop-filter:blur(6px); animation:none; }
+.desktop-window .settings-panel { width:min(920px,calc(100vw - 40px)); height:min(760px,calc(100dvh - 40px)); border-radius:20px; border:1px solid var(--glass-edge); background:var(--glass-pane); box-shadow:var(--glass-shadow); backdrop-filter:blur(28px) saturate(1.3); }
+.desktop-window .settings-panel .panel-header { flex:none; padding:18px 22px 16px; min-height:72px; align-items:center; background:var(--glass-surface); border-color:var(--glass-line); }
+.desktop-window .settings-panel .panel-header h2 { font-size:20px; font-weight:650; }
+.desktop-window .settings-panel .panel-header p { margin-top:4px; font-size:11px; color:var(--muted); }
+.desktop-window .settings-panel .panel-header .icon-button { width:28px; height:28px; border-radius:50%; }
+.desktop-window .settings-panel .panel-header svg { width:15px; height:15px; }
+.desktop-window .settings-panel .settings-layout { grid-template-columns:172px minmax(0,1fr); min-height:0; }
+.desktop-window .settings-panel .settings-nav { padding:14px 10px; gap:16px; overflow:auto; min-height:0; background:var(--glass-sidebar); border-color:var(--glass-line); scrollbar-width:thin; }
+.settings-nav-group { flex:none; display:flex; flex-direction:column; gap:3px; }
+.settings-nav-group h3 { margin:0 10px 4px; font-size:10px; line-height:16px; font-weight:500; color:var(--muted); }
+.desktop-window .app-shell .settings-panel .settings-nav button { width:100%; min-height:34px; padding:7px 10px; gap:8px; border:1px solid transparent; border-radius:10px; background:transparent; box-shadow:none; backdrop-filter:none; font-size:12px; font-weight:450; color:var(--text); justify-content:flex-start; }
+.desktop-window .app-shell .settings-panel .settings-nav button:hover { background:color-mix(in oklab,var(--field) 35%,transparent); }
+.desktop-window .app-shell .settings-panel .settings-nav button.selected { background:var(--glass-control); border-color:var(--glass-edge); box-shadow:inset 0 1px 1px var(--glass-edge),0 2px 5px color-mix(in oklab,var(--text) 5%,transparent); color:var(--accent); font-weight:550; }
+.settings-nav button span:first-of-type { min-width:0; }
+.desktop-window .settings-panel .settings-brand { margin-top:auto; padding:12px 8px 0; gap:6px; }
+.desktop-window .settings-panel .settings-brand svg { width:16px; height:16px; }
+.desktop-window .settings-panel .settings-brand span { font-size:9px; line-height:1.5; }
+.desktop-window .settings-panel .settings-content { padding:24px; min-width:0; overflow:auto; scrollbar-width:thin; }
+.desktop-window .settings-content h3 { font-size:18px; line-height:1.35; font-weight:650; letter-spacing:0; }
+.desktop-window .settings-content .section-description, .desktop-window .settings-content .section-heading p { margin:6px 0 18px; font-size:12px; line-height:1.5; color:var(--muted); }
+.desktop-window .settings-content .section-heading { align-items:center; gap:16px; margin-bottom:18px; }
+.desktop-window .settings-content .section-heading p { margin-bottom:0; }
+.desktop-window .settings-content h4 { font-size:12px; font-weight:650; margin-bottom:12px; }
+.desktop-window .settings-content .field { margin-bottom:14px; gap:6px; }
+.desktop-window .settings-content .field>span { font-size:12px; font-weight:500; }
+.desktop-window .settings-content :is(input:not([type="checkbox"]):not([type="color"]),select,textarea) { padding:8px 10px; font-size:12px; border:1px solid var(--glass-line); border-radius:10px; background:color-mix(in oklab,var(--field) 65%,transparent); box-shadow:inset 0 1px 2px color-mix(in oklab,var(--text) 3%,transparent); }
+.desktop-window .settings-content :is(input,select,textarea):focus { border-color:var(--accent); }
+.desktop-window .settings-content .check-row { font-size:12px; line-height:1.5; gap:8px; }
+.desktop-window .settings-content input[type="checkbox"] { width:14px; height:14px; }
+.desktop-window .settings-content .form-hint, .desktop-window .settings-content .field small { font-size:10px; line-height:1.65; max-width:65ch; }
+.desktop-window .settings-content .settings-group { margin-top:22px; padding-top:20px; border-color:var(--glass-line); }
+.desktop-window .app-shell .settings-panel .settings-content button { border-radius:10px; font-size:11px; padding:7px 11px; }
+.desktop-window .app-shell .settings-panel .settings-content button.primary { background:linear-gradient(160deg,color-mix(in oklab,var(--accent) 11%,var(--field)),color-mix(in oklab,var(--accent) 20%,var(--bg))); border-color:color-mix(in oklab,var(--accent) 25%,var(--glass-line)); color:var(--accent); }
+.desktop-window .settings-content .account-list { overflow:hidden; border:1px solid var(--glass-line); border-radius:14px; background:color-mix(in oklab,var(--field) 45%,transparent); }
+.desktop-window .settings-content .account-list:empty { display:none; }
+.desktop-window .settings-content .account-row { display:grid; grid-template-columns:32px minmax(0,1fr) auto; gap:12px; padding:14px; margin:0; align-items:start; border-bottom:1px solid var(--glass-line); }
+.desktop-window .settings-content .account-row:last-child { border-bottom:0; }
+.desktop-window .settings-content .account-avatar { width:32px; height:32px; border:1px solid var(--glass-edge); border-radius:10px; background:color-mix(in oklab,var(--accent) 7%,var(--glass-pane)); color:var(--accent); }
+.desktop-window .settings-content .account-avatar svg { width:18px; height:18px; }
+.desktop-window .settings-content .account-info { min-width:0; gap:3px; }
+.desktop-window .settings-content .account-info strong { font-size:12px; }
+.desktop-window .settings-content .account-info :is(span,small) { display:block; max-width:100%; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; font-size:10px; line-height:1.5; }
+.desktop-window .settings-content .account-actions { display:flex; gap:4px; flex-wrap:nowrap; }
+.desktop-window .app-shell .settings-panel .account-actions button { font-size:10px; padding:4px 7px; min-height:26px; }
+.desktop-window .app-shell .settings-panel .account-actions .icon-button { width:26px; height:26px; padding:5px; }
+.desktop-window .settings-content .account-actions svg { width:13px; height:13px; }
+.desktop-window .settings-content .calendar-setting-row { display:grid; grid-template-columns:26px minmax(0,1fr) auto; gap:10px; padding:10px 0; }
+.desktop-window .settings-content .calendar-setting-row>span { min-width:0; font-size:12px; }
+.desktop-window .settings-content .calendar-setting-row small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; }
+.desktop-window .settings-content input[type="color"] { width:26px; height:26px; border-color:var(--glass-line); border-radius:8px; background:var(--glass-pane); }
+.desktop-window .settings-content .ics-import { padding:16px; border:1px solid var(--glass-line); border-radius:14px; background:color-mix(in oklab,var(--field) 38%,transparent); }
+.desktop-window .settings-content .ics-import summary { padding:0; font-size:12px; }
+.desktop-window .settings-content .ics-import[open] summary { margin-bottom:10px; }
+.desktop-window .settings-content .privacy-row { gap:14px; border-color:var(--glass-line); }
+.desktop-window .settings-content .privacy-row>div { min-width:0; }
+.desktop-window .settings-content .privacy-row p { font-size:11px; line-height:1.65; }
+.desktop-window .settings-content .theme-options { gap:10px; }
+.desktop-window .app-shell .settings-panel .settings-content .theme-option { border-radius:12px; padding:8px; }
+.desktop-window .settings-content .theme-preview { height:72px; }
+.desktop-window .settings-content .theme-option>span { font-size:11px; }
+.desktop-window .settings-content :is(.storage-summary,.privacy-note,.update-status,.release-notes,.conflict-item) { border-color:var(--glass-line); border-radius:12px; background:color-mix(in oklab,var(--field) 36%,transparent); }
+.desktop-window .settings-content .version-heading { padding:12px 0 18px; }
+.desktop-window .settings-content .version-heading img { width:42px; height:42px; }
+.desktop-window .settings-content .version-heading strong { font-size:16px; }
+.desktop-window .settings-content .version-heading span { font-size:11px; }
+.desktop-window .settings-panel :is(.settings-nav,.settings-content), .floating-editor .editor-body { scrollbar-width:auto; scrollbar-color:auto; }
+.desktop-window .settings-panel :is(.settings-nav,.settings-content)::-webkit-scrollbar, .floating-editor .editor-body::-webkit-scrollbar { width:8px; }
+.desktop-window .settings-panel :is(.settings-nav,.settings-content)::-webkit-scrollbar-track, .floating-editor .editor-body::-webkit-scrollbar-track { background:transparent; }
+.desktop-window .settings-panel :is(.settings-nav,.settings-content)::-webkit-scrollbar-thumb, .floating-editor .editor-body::-webkit-scrollbar-thumb { border:2px solid transparent; border-radius:999px; background:color-mix(in oklab,var(--muted) 35%,transparent); background-clip:padding-box; }
+.desktop-window .settings-panel :is(.settings-nav,.settings-content)::-webkit-scrollbar-button, .floating-editor .editor-body::-webkit-scrollbar-button { display:none; width:0; height:0; }
+@media (max-width:700px) {
+  .desktop-window .settings-panel { width:calc(100vw - 20px); height:calc(100dvh - 20px); }
+  .desktop-window .settings-panel .settings-layout { grid-template-columns:140px minmax(0,1fr); }
+  .desktop-window .settings-panel .settings-content { padding:18px; }
+  .desktop-window .settings-content .account-row { grid-template-columns:28px minmax(0,1fr); gap:8px; padding:12px; }
+  .desktop-window .settings-content .account-actions { grid-column:2; justify-self:start; }
+}
+@media (max-width:580px) {
+  .desktop-window .settings-panel { width:calc(100vw - 16px); height:calc(100dvh - 16px); border-radius:16px; }
+  .desktop-window .settings-panel .panel-header { min-height:54px; padding:10px 14px; }
+  .desktop-window .settings-panel .panel-header h2 { font-size:17px; }
+  .desktop-window .settings-panel .panel-header p { font-size:10px; margin-top:2px; }
+  .desktop-window .settings-panel .settings-layout { grid-template-columns:112px minmax(0,1fr); }
+  .desktop-window .settings-panel .settings-nav { padding:10px 6px; gap:12px; }
+  .desktop-window .app-shell .settings-panel .settings-nav button { min-height:32px; padding:6px 7px; gap:5px; font-size:10px; }
+  .desktop-window .settings-panel .settings-nav button svg { width:12px; height:12px; }
+  .settings-nav-group h3 { margin-left:7px; font-size:9px; }
+  .desktop-window .settings-panel .settings-content { padding:14px; }
+  .desktop-window .settings-content .section-heading { align-items:flex-start; flex-wrap:wrap; gap:10px; }
+  .desktop-window .settings-content .form-columns { grid-template-columns:minmax(0,1fr); }
+  .desktop-window .settings-content .theme-options { grid-template-columns:minmax(0,1fr); }
+  .desktop-window .settings-content .privacy-row { flex-direction:column; align-items:flex-start; }
+  .desktop-window .settings-content .calendar-setting-row { grid-template-columns:24px minmax(0,1fr); }
+  .desktop-window .settings-content .calendar-setting-row .check-row { grid-column:2; justify-self:start; }
+}

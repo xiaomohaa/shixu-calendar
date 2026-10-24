@@ -203,7 +203,7 @@ try {
   if (await page.locator('.month-span').filter({ has: page.getByRole('button', { name: /跨周续接胶囊/ }) }).count() !== 2) throw new Error('Cross-week capsule continuation failed');
   if (await page.locator('.month-cell .month-event').filter({ hasText: '连续跨天胶囊' }).count()) throw new Error('Multi-day capsule was duplicated in individual day cells');
   const past = page.locator('.month-span').filter({ has: page.getByRole('button', { name: /已结束跨天胶囊/ }) }).locator('button');
-  if (await past.evaluate(el => Number(getComputedStyle(el).opacity)) >= .6) throw new Error('Ended event was not faded');
+  if (await past.evaluate(el => Number(getComputedStyle(el).opacity)) !== 1) throw new Error('Past event is still faded');
   const timed = page.locator('.month-event.event-timed').first();
   const timedStyle = await timed.evaluate(el => ({ background: getComputedStyle(el).backgroundColor, marker: getComputedStyle(el.querySelector('.event-color-dot')).width, markerHeight: getComputedStyle(el.querySelector('.event-color-dot')).height }));
   if (timedStyle.background !== 'rgba(0, 0, 0, 0)' || timedStyle.marker !== '3px' || timedStyle.markerHeight !== '12px') throw new Error(`Timed event is not title and a left bar: ${JSON.stringify(timedStyle)}`);
@@ -297,7 +297,7 @@ try {
     console.log(`PASS: actual iCloud ICS URL imported ${holidays.length} holiday instances in 2026`);
   }
   console.log('PASS: ICS URL import UI, read-only enforcement, refresh and persistent subscription');
-  console.log('PASS: Tauri DAV, event CRUD, continuous cross-day/cross-week capsules, compact size, grid alignment and ended fading');
+  console.log('PASS: Tauri DAV, event CRUD, continuous cross-day/cross-week capsules, compact size, grid alignment and full past-event contrast');
 } finally {
   await browser?.close();
   app.kill();

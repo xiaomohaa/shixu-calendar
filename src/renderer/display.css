@@ -25,10 +25,6 @@ html[data-bold-text="true"] :is(h1, h2, h3, h4, h5, h6, strong, b) {
 .month-span.continues-left .event-capsule { border-top-left-radius:0; border-bottom-left-radius:0; }
 .month-span.continues-right .event-capsule { border-top-right-radius:0; border-bottom-right-radius:0; }
 .month-event-list, .month-event-dots { margin-top:calc(var(--reserved-lanes, 0) * var(--event-lane-height, 20px)); }
-.month-event.event-ended, .agenda-event.event-ended, .summary-event.event-ended, .fc .event-ended { opacity:.48; }
-.month-event.event-ended:hover, .agenda-event.event-ended:hover, .summary-event.event-ended:hover,
-.month-event.event-ended:focus-visible, .agenda-event.event-ended:focus-visible, .summary-event.event-ended:focus-visible,
-.fc .event-ended:hover, .fc .event-ended:focus-within { opacity:.8; }
 
 @media (max-width:580px) {
   .settings-nav { overflow-y:auto; }
