@@ -1,3 +1,4 @@
+import { setEditorDateTime, editorDateTime } from './editor-controls.mjs';
 import { chromium } from 'playwright';
 import { build } from 'esbuild';
 import { spawn } from 'node:child_process';
@@ -130,10 +131,40 @@ try {
   await page.waitForFunction(async () => (await window.shixu.snapshot()).settings.timezone === 'UTC');
   await page.getByRole('button', { name: '关闭面板', exact: true }).click();
   await page.locator('.month-event').filter({ hasText: 'UTC来源日程' }).click();
-  if (await page.getByLabel('开始时间', { exact: true }).inputValue() !== '2026-10-15T02:00') throw new Error('Editor does not use unified UTC preference');
+  if (await editorDateTime(page, '开始') !== '2026-10-15T02:00') throw new Error('Editor does not use unified UTC preference');
   if ((await page.locator('.editor-panel').textContent()).includes('时区') || await page.locator('#timezones').count()) throw new Error('Event editor still exposes timezone controls or text');
-  await page.getByLabel('开始时间', { exact: true }).fill('2026-10-15T03:00');
-  await page.getByLabel('结束时间', { exact: true }).fill('2026-10-15T04:00');
+  if (await page.locator('.editor-panel .panel-header').count() || await page.locator('.editor-panel input[type="datetime-local"]').count()) throw new Error('Old editor header or combined date-time field remains');
+  const editStyle = await page.locator('.reference-event-editor').evaluate(el => ({
+    title: getComputedStyle(el.querySelector('.event-title-input')).fontSize,
+    body: getComputedStyle(el.querySelector('.event-option-row>span')).fontSize,
+    rows: [...el.querySelectorAll('.event-option-row select,.event-option-row input')].map(node => getComputedStyle(node).fontSize),
+    separators: [...el.querySelectorAll('.event-options,.event-primary,.event-location-box,.event-calendar-box,.event-notes-box,.panel-footer')].some(node => parseFloat(getComputedStyle(node).borderTopWidth) > 0 || parseFloat(getComputedStyle(node).borderBottomWidth) > 0),
+  }));
+  if (editStyle.title !== '14px' || editStyle.body !== '12px' || editStyle.rows.some(size => size !== '12px') || editStyle.separators) throw new Error(`Reference editor type/grouping mismatch: ${JSON.stringify(editStyle)}`);
+  const eventTitleInput = page.getByRole('textbox', { name: '日程标题', exact: true });
+  await eventTitleInput.fill('上午将《西藏全域通信能力建设规划提纲》完善，并与相关单位共同确认下一阶段的详细安排');
+  if (await eventTitleInput.evaluate(el => el.scrollWidth > el.clientWidth + 1 || el.getBoundingClientRect().height <= 48)) throw new Error('Long event title does not wrap into multiple lines');
+  await page.getByRole('textbox', { name: '日程标题', exact: true }).fill('上午将《西藏全域通信能力建设规划提纲》完善');
+  await page.getByRole('combobox', { name: '行程时间', exact: true }).selectOption('30');
+  await page.getByRole('button', { name: '开始日期', exact: true }).click();
+  const datePicker = page.getByRole('dialog', { name: '选择开始日期', exact: true });
+  await datePicker.waitFor();
+  if (await datePicker.locator('.event-picker-day').count() !== 42) throw new Error('Date picker does not contain six complete weeks');
+  const selectedDate = datePicker.locator('.event-picker-day[aria-pressed="true"]');
+  await selectedDate.focus(); await page.keyboard.press('ArrowRight');
+  if (await page.evaluate(() => document.activeElement?.getAttribute('data-date')) !== '2026-10-16') throw new Error('Date picker arrow navigation failed');
+  await page.keyboard.press('ArrowLeft');
+  await page.screenshot({ path: '.smoke-data/reference-editor-datepicker.png' });
+  await datePicker.getByRole('button', { name: '日期选择下个月', exact: true }).click();
+  if (await page.evaluate(() => document.activeElement?.getAttribute('data-date')) !== '2026-11-01') throw new Error('Month navigation did not retain keyboard access to the date grid');
+  await datePicker.getByRole('button', { name: '日期选择上个月', exact: true }).click();
+
+  await page.keyboard.press('Escape');
+  await datePicker.waitFor({ state: 'detached' });
+  if (!(await page.locator('.editor-panel').isVisible())) throw new Error('Escape from date picker closed the entire editor');
+  await page.screenshot({ path: '.smoke-data/reference-editor.png' });
+  await setEditorDateTime(page, '开始', '2026-10-15T03:00');
+  await setEditorDateTime(page, '结束', '2026-10-15T04:00');
   await page.getByRole('button', { name: '保存日程', exact: true }).click();
   await page.locator('.editor-panel').waitFor({ state: 'detached' });
   await page.getByRole('button', { name: '设置', exact: true }).click();
@@ -142,8 +173,9 @@ try {
   await page.getByRole('button', { name: '保存日历偏好', exact: true }).click();
   await page.waitForFunction(async () => (await window.shixu.snapshot()).settings.timezone === 'Asia/Shanghai');
   await page.getByRole('button', { name: '关闭面板', exact: true }).click();
-  await page.locator('.month-event').filter({ hasText: 'UTC来源日程' }).click();
-  if (await page.getByLabel('开始时间', { exact: true }).inputValue() !== '2026-10-15T11:00') throw new Error('UTC event is not displayed in unified UTC+8');
+  await page.locator('.month-event').filter({ hasText: '上午将《西藏全域通信能力建设规划提纲》完善' }).click();
+  if (await editorDateTime(page, '开始') !== '2026-10-15T11:00') throw new Error('UTC event is not displayed in unified UTC+8');
+  if (await page.getByRole('combobox', { name: '行程时间', exact: true }).inputValue() !== '30') throw new Error('Travel time did not persist');
   await page.getByRole('textbox', { name: '日程标题', exact: true }).fill('统一时区保留实际时间');
   await page.getByRole('button', { name: '保存日程', exact: true }).click();
   await page.locator('.editor-panel').waitFor({ state: 'detached' });
@@ -163,6 +195,7 @@ try {
   if (await darkBlock.evaluate(el => getComputedStyle(el).backgroundColor) === 'rgba(0, 0, 0, 0)') throw new Error('Dark time block has no color fill');
   await darkBlock.click();
   await page.locator('.fc-timegrid-event.event-selected').waitFor();
+  await page.screenshot({ path: '.smoke-data/reference-editor-dark.png' });
   await page.screenshot({ path: '.smoke-data/filled-day-dark.png' });
   await page.getByRole('button', { name: '取消', exact: true }).click();
   await page.getByRole('button', { name: '月', exact: true }).click();

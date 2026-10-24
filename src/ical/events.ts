@@ -32,6 +32,13 @@ function eventTime(t: ICAL.Time, tzid: string): string {
   return dt.toUTC().toISO()!;
 }
 function timezone(e: ICAL.Event, fallback: string) { return e.component.getFirstProperty('dtstart')?.getFirstParameter('tzid') || (e.startDate.zone.tzid === 'UTC' ? 'UTC' : fallback); }
+// https://github.com/apple/ccs-calendarserver/blob/master/twistedcaldav/stdconfig.py
+function travelMinutes(component: ICAL.Component): number | undefined {
+  const value = component.getFirstPropertyValue('x-apple-travel-duration');
+  if (value == null) return 0;
+  try { const seconds = ICAL.Duration.fromString(String(value)).toSeconds(); return Number.isInteger(seconds / 60) && seconds >= 0 && seconds <= 86400 ? seconds / 60 : undefined; }
+  catch { return undefined; }
+}
 function reminder(e: ICAL.Event) {
   const alarms = e.component.getAllSubcomponents('valarm');
   if (!alarms.length) return -1;
@@ -140,6 +147,10 @@ export function editCalendar(input: EventInput, original?: string): string {
   }
   event.startDate = start; event.endDate = end;
   event.summary = input.title; event.location = input.location; event.description = input.description;
+  if (input.travelMinutes !== undefined) {
+    target.removeAllProperties('x-apple-travel-duration');
+    if (input.travelMinutes > 0) target.addPropertyWithValue('x-apple-travel-duration', ICAL.Duration.fromSeconds(input.travelMinutes * 60).toString());
+  }
   event.sequence = (event.sequence || 0) + 1;
   target.updatePropertyWithValue('dtstamp', ICAL.Time.now().convertToZone(ICAL.Timezone.utcTimezone));
   target.updatePropertyWithValue('last-modified', ICAL.Time.now().convertToZone(ICAL.Timezone.utcTimezone));
@@ -179,5 +190,5 @@ export function editorInput(r: Resource, scope: 'series' | 'instance', recurrenc
   if (scope === 'instance' && recurrenceId) { const rid = ICAL.Time.fromString(recurrenceId, undefined); rid.zone = start.zone; const details = ev.getOccurrenceDetails(rid); item = details.item; start = details.startDate; end = details.endDate; }
   if (scope === 'instance' && item === ev) { const period = master.getAllProperties('rdate').flatMap(p => p.getValues()).find(v => v instanceof ICAL.Period && v.start.compare(start) === 0) as ICAL.Period | undefined; if (period) { end = start.clone(); end.addDuration(period.getDuration()); } }
   const tz = timezone(item, fallback);
-  return { resourceId: r.id, calendarId: r.calendarId, uid: ev.uid, title: item.summary || '', start: eventTime(start, tz), end: eventTime(end, tz), allDay: start.isDate, timezone: tz, floating: start.zone.tzid === 'floating', location: item.location || '', description: item.description || '', rrule: recurrenceRules(ev.component), reminder: reminder(item), scope, recurrenceId };
+  return { resourceId: r.id, calendarId: r.calendarId, uid: ev.uid, title: item.summary || '', start: eventTime(start, tz), end: eventTime(end, tz), allDay: start.isDate, timezone: tz, travelMinutes: travelMinutes(item.component), floating: start.zone.tzid === 'floating', location: item.location || '', description: item.description || '', rrule: recurrenceRules(ev.component), reminder: reminder(item), scope, recurrenceId };
 }

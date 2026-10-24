@@ -30,6 +30,7 @@ export const eventInput = z.object({
   title: z.string().trim().min(1, '请输入日程标题').max(500), start: z.string().min(10), end: z.string().min(10),
   allDay: z.boolean(), timezone: z.string().min(1).max(100), location: z.string().max(2000), description: z.string().max(50000),
   floating: z.boolean().optional(),
+  travelMinutes: z.number().int().min(0).max(1440).optional(),
   rrule: z.string().max(2000), reminder: z.number().int().min(-2).max(10080),
   scope: z.enum(['series', 'instance']).default('series'), recurrenceId: z.string().optional(),
 });

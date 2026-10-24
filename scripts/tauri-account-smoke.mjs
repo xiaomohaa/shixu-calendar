@@ -1,3 +1,4 @@
+import { setEditorDateTime, editorDateTime } from './editor-controls.mjs';
 import { chromium } from 'playwright';
 import { build } from 'esbuild';
 import { spawn } from 'node:child_process';
@@ -137,7 +138,7 @@ try {
   if (checkboxSize.width !== '10px' || checkboxSize.height !== '10px') throw new Error('Calendar visibility checkmark is not 10px');
   await dateButton.dblclick();
   await page.getByRole('dialog', { name: '新建日程', exact: true }).waitFor();
-  if (await page.getByLabel('开始时间', { exact: true }).inputValue() !== '2026-10-29T10:00' || await page.getByLabel('结束时间', { exact: true }).inputValue() !== '2026-10-29T11:00') throw new Error('Double-click defaults are not the clicked date/current hour/default duration');
+  if (await editorDateTime(page, '开始') !== '2026-10-29T10:00' || await editorDateTime(page, '结束') !== '2026-10-29T11:00') throw new Error('Double-click defaults are not the clicked date/current hour/default duration');
   const otherDate = page.getByRole('button', { name: '2026年10月29日', exact: true });
   const miniSelection = await otherDate.evaluate(el => ({ background: getComputedStyle(el).backgroundColor, color: getComputedStyle(el).color, accent: getComputedStyle(document.documentElement).getPropertyValue('--accent') }));
   if (miniSelection.background !== 'rgba(0, 0, 0, 0)') throw new Error('Mini calendar marks a non-today creation date');
@@ -151,12 +152,12 @@ try {
   await page.waitForFunction(() => document.querySelector('.month-event.event-draft .month-event-title')?.textContent === '实时预览标题');
   await page.getByRole('checkbox', { name: '全天日程', exact: true }).check();
   await page.locator('.month-event.event-draft.event-all-day.event-capsule').waitFor();
-  await page.getByLabel('结束时间', { exact: true }).fill('2026-11-03');
+  await setEditorDateTime(page, '结束', '2026-11-03');
   await page.waitForFunction(() => document.querySelectorAll('.month-event.event-draft').length === 2);
   await page.screenshot({ path: '.smoke-data/new-event-popover.png' });
   const persistedPreview = await page.evaluate(() => window.shixu.events('2026-10-01', '2026-12-01'));
   if (persistedPreview.some(event => event.title === '实时预览标题')) throw new Error('Draft was persisted before save');
-  await page.getByLabel('开始时间', { exact: true }).fill('2026-11-18');
+  await setEditorDateTime(page, '开始', '2026-11-18');
   await page.waitForFunction(() => document.querySelector('.month-span[data-start="2026-11-18"] .event-draft'));
   page.once('dialog', dialog => dialog.accept());
   await page.getByRole('button', { name: '取消', exact: true }).click();
@@ -164,13 +165,13 @@ try {
   await page.getByRole('button', { name: '上一周期', exact: true }).click();
   await page.locator('.month-cell[data-date="2026-10-23"]').waitFor();
   await page.locator('.month-cell[data-date="2026-11-01"] .month-day-button').dblclick();
-  if (await page.getByLabel('开始时间', { exact: true }).inputValue() !== '2026-11-01T10:00') throw new Error('Adjacent month double-click uses wrong date');
+  if (await editorDateTime(page, '开始') !== '2026-11-01T10:00') throw new Error('Adjacent month double-click uses wrong date');
   await page.getByRole('button', { name: '取消', exact: true }).click();
   await page.locator('.month-cell[data-date="2026-10-23"] .solar-date').click();
   await page.getByRole('button', { name: '新建日程', exact: true }).first().click();
   await page.getByRole('textbox', { name: '日程标题' }).fill('Tauri 界面新建');
-  await page.getByLabel('开始时间').fill('2026-10-23T12:00');
-  await page.getByLabel('结束时间', { exact: true }).fill('2026-10-23T13:00');
+  await setEditorDateTime(page, '开始', '2026-10-23T12:00');
+  await setEditorDateTime(page, '结束', '2026-10-23T13:00');
   await page.getByRole('button', { name: '保存日程', exact: true }).click();
   await page.waitForFunction(async () => (await window.shixu.events('2026-10-22T00:00:00Z', '2026-10-25T00:00:00Z')).some(event => event.title === 'Tauri 界面新建'));
   await page.waitForFunction(() => [...document.querySelectorAll('.month-event')].some(el => el.textContent.includes('Tauri 界面新建')) || document.querySelector('.month-cell[data-date="2026-10-23"] .month-more'));
@@ -239,6 +240,12 @@ try {
   await page.locator('.month-cell[data-date="2026-10-29"] .month-day-button').dblclick();
   const smallEditor = await page.locator('.floating-editor').boundingBox();
   if (smallEditor.x < 0 || smallEditor.y < 0 || smallEditor.x + smallEditor.width > 480 || smallEditor.y + smallEditor.height > 360) throw new Error('Minimum-size editor is off screen');
+  await page.getByRole('button', { name: '开始日期', exact: true }).click();
+  const minimumPicker = page.locator('.event-date-picker'); await minimumPicker.waitFor();
+  const pickerBounds = await minimumPicker.boundingBox();
+  if (pickerBounds.x < 0 || pickerBounds.y < 0 || pickerBounds.x + pickerBounds.width > 480 || pickerBounds.y + pickerBounds.height > 360) throw new Error('Minimum-size date picker is outside the window');
+  await page.keyboard.press('Escape');
+  await minimumPicker.waitFor({ state: 'detached' });
   await page.getByLabel('日程标题', { exact: true }).fill('最小窗口浮层保存');
   await page.screenshot({ path: '.smoke-data/small-event-popover.png' });
   await page.getByRole('button', { name: '保存日程', exact: true }).click();
@@ -254,7 +261,7 @@ try {
   await page.screenshot({ path: '.smoke-data/year-with-calendars.png' });
   await page.locator('.year-month[aria-label="2026年10月"] .year-day[aria-label^="2026-10-29"]').dblclick();
   await page.locator('.month-event.event-draft').waitFor();
-  if (await page.getByLabel('开始时间', { exact: true }).inputValue() !== '2026-10-29T10:00') throw new Error('Year date double-click did not open corresponding month/date draft');
+  if (await editorDateTime(page, '开始') !== '2026-10-29T10:00') throw new Error('Year date double-click did not open corresponding month/date draft');
   await page.getByRole('button', { name: '取消', exact: true }).click();
   await page.locator('.event-draft').waitFor({ state: 'detached' });
   await page.getByRole('button', { name: '年', exact: true }).click();
