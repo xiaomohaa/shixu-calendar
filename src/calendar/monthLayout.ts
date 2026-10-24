@@ -8,11 +8,15 @@ export function monthDays(month: string, firstDay: number, timezone: string): st
 }
 export const MONTH_EVENT_HEIGHT = 16, MONTH_EVENT_LANE = 18;
 
-export function monthLayout(_width: number, height: number) {
-  const row = height / 6;
-  // Font sizes and row height stay fixed. Only the number of visible events changes.
+export function monthLayout(_width: number, height: number, measured: { rowHeight?: number; headerHeight?: number; bottomSpace?: number; eventHeight?: number; laneHeight?: number } = {}) {
+  const row = measured.rowHeight ?? height / 6;
+  const header = measured.headerHeight ?? 24, bottom = measured.bottomSpace ?? 1;
+  const eventHeight = measured.eventHeight ?? MONTH_EVENT_HEIGHT, lane = measured.laneHeight ?? MONTH_EVENT_LANE;
+  // The last event needs its own height, not an extra trailing gap. Do not
+  // reserve the legacy 40px header or impose an arbitrary five-event ceiling.
+  const capacity = Math.floor((row - header - bottom + lane - eventHeight) / lane);
   return { compact: row < 72, inlineOverflow: row < 62,
-    capacity: Math.max(1, Math.min(5, Math.floor((row - 40) / MONTH_EVENT_LANE))) };
+    capacity: Math.max(1, capacity) };
 }
 /** Compare civil dates; all-day DTEND is exclusive, timed ends use an instant. */
 export function groupMonthEvents(events: CalendarEvent[], days: string[], timezone: string) {

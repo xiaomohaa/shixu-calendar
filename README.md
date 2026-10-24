@@ -2,7 +2,7 @@
 
 当前正式版使用 **Tauri 2 + Rust + React**。下载 [Windows x64 安装包](https://github.com/xiaomohaa/shixu-calendar/releases/latest)。现有 Tauri 2.x 用户可在“设置 → 关于与更新”中升级；Electron 1.x 用户请手动安装 Tauri 版本。旧版数据会复制迁移，原数据库保留。
 
-2.1.3 按参考图重做日程浮层：标题 14px、正文和控件 12px，去掉标题栏与内部横线，设置放进一个圆角框；日期点击弹出小月历，时间独立选择。新增可保存的手动行程时间，保留统一时区、实时预览和全部同步功能。完整变化见 [2.1.3 发布说明](docs/RELEASE_NOTES_2.1.3.md)。
+2.1.4 修复月历日程过早折叠：按真实日格和日期栏高度计算能显示的行数，空间足够时完整显示，不再固定预留旧版空白，也不再限制最多五行。保留只够一行时的“+N个”、跨天胶囊、参考编辑器、统一时区与全部同步功能。完整变化见 [2.1.4 发布说明](docs/RELEASE_NOTES_2.1.4.md)。
 
 下面保留 Electron 1.3.0 的历史开发与打包说明。Tauri 的构建命令见 [迁移计划](docs/TAURI_MIGRATION_PLAN.md) 和 package.json 中的 `tauri:*` 脚本。
 

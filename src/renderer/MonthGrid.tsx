@@ -2,7 +2,7 @@ import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSPr
 import { DateTime } from 'luxon';
 import { Plus, Repeat2, X } from 'lucide-react';
 import type { Calendar, CalendarEvent } from '../shared/contracts';
-import { groupMonthEvents, monthDays, monthLayout, MONTH_EVENT_LANE } from '../calendar/monthLayout';
+import { groupMonthEvents, monthDays, monthLayout, MONTH_EVENT_HEIGHT, MONTH_EVENT_LANE } from '../calendar/monthLayout';
 import { MonthDate } from './MonthDate';
 import type { PanelAnchor } from './popoverLayout';
 import { EventMark } from './EventMark';
@@ -31,7 +31,17 @@ export const MonthGrid = memo(function MonthGrid(p: Props) {
   useLayoutEffect(() => {
     const element = grid.current; if (!element) return;
     let frame = 0;
-    const measure = () => { const next = monthLayout(element.clientWidth, element.clientHeight); setLayout(old => old.compact === next.compact && old.capacity === next.capacity && old.inlineOverflow === next.inlineOverflow ? old : next); };
+    const measure = () => {
+      const rows = Array.from(element.querySelectorAll<HTMLElement>('.month-week-row'));
+      const cell = element.querySelector<HTMLElement>('.month-cell'), header = element.querySelector<HTMLElement>('.month-day-button'), list = element.querySelector<HTMLElement>('.month-event-list');
+      const bottomSpace = (cell ? parseFloat(getComputedStyle(cell).borderBottomWidth) : 1) + (list ? parseFloat(getComputedStyle(list).paddingBottom) : 0);
+      const next = monthLayout(element.clientWidth, element.clientHeight, {
+        rowHeight: rows.length ? Math.min(...rows.map(row => row.getBoundingClientRect().height)) : undefined,
+        headerHeight: header?.getBoundingClientRect().height,
+        bottomSpace, eventHeight: MONTH_EVENT_HEIGHT, laneHeight: MONTH_EVENT_LANE,
+      });
+      setLayout(old => old.compact === next.compact && old.capacity === next.capacity && old.inlineOverflow === next.inlineOverflow ? old : next);
+    };
     measure();
     const observer = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); });
     observer.observe(element); return () => { observer.disconnect(); cancelAnimationFrame(frame); };
@@ -68,7 +78,7 @@ export const MonthGrid = memo(function MonthGrid(p: Props) {
   </button>;
   return <section className="month-view" role="grid" aria-label="月日历">
     <div className="month-weekdays" role="row">{Array.from({ length: 7 }, (_, i) => { const day = (p.firstDay + i) % 7; return <span role="columnheader" className={day === 0 || day === 6 ? 'weekend' : ''} key={day}>周{['日','一','二','三','四','五','六'][day]}</span>; })}</div>
-    <div className="month-scroll"><div ref={grid} className={`month-grid ${layout.inlineOverflow ? 'inline-overflow' : ''}`} style={{ '--event-lane-height': `${MONTH_EVENT_LANE}px` } as CSSProperties} role="rowgroup" aria-label="月视图日期与日程" data-event-mode="capsules">
+    <div className="month-scroll"><div ref={grid} className={`month-grid ${layout.inlineOverflow ? 'inline-overflow' : ''}`} style={{ '--event-lane-height': `${MONTH_EVENT_LANE}px` } as CSSProperties} role="rowgroup" aria-label="月视图日期与日程" data-event-mode="capsules" data-event-capacity={layout.capacity}>
       {Array.from({ length: 6 }, (_, row) => <div role="row" className="month-week-row" key={row}>{days.slice(row * 7, row * 7 + 7).map(day => {
         const list = groups.get(day)!, dt = DateTime.fromISO(day, { zone: p.timezone });
         const { visible, reserved, overflow } = weeks[row].cells[days.indexOf(day) % 7];
