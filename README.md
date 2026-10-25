@@ -4,9 +4,9 @@
 
 面向 **Windows 10 / 11 x64** 的个人桌面日历。使用 **Tauri 2、Rust、React、TypeScript 和 SQLite**，支持 CalDAV 双向同步、ICS 链接订阅、离线编辑与 Windows 提醒。
 
-当前正式版为 **2.2.0**，Windows 安装包约 **29.32 MiB**。界面采用液态玻璃风格，支持浅色、深色和跟随系统。
+当前正式版为 **2.2.1**，Windows 安装包约 **29.33 MiB**。界面采用液态玻璃风格，支持浅色、深色和跟随系统。
 
-**[下载最新正式版](https://github.com/xiaomohaa/shixu-calendar/releases/latest)** · [直接下载 2.2.0 安装包](https://github.com/xiaomohaa/shixu-calendar/releases/download/v2.2.0/Shixu-Setup-2.2.0-x64.exe) · [2.2.0 更新说明](docs/RELEASE_NOTES_2.2.0.md)
+**[下载最新正式版](https://github.com/xiaomohaa/shixu-calendar/releases/latest)** · [直接下载 2.2.1 安装包](https://github.com/xiaomohaa/shixu-calendar/releases/download/v2.2.1/Shixu-Setup-2.2.1-x64.exe) · [2.2.1 更新说明](docs/RELEASE_NOTES_2.2.1.md)
 
 ![当前月视图：农历日期、全天胶囊、跨天日程与侧栏](docs/screenshots/month-2.1.png)
 
@@ -63,9 +63,9 @@
 
 ### 日程编辑
 
-标题、日程设置、地点、所属日历和备注按参考布局排列，左侧竖条跟随日历颜色。日期与时间分别操作，保留明确的保存、取消和删除。
+标题、日程设置、地点、所属日历和备注放在紧凑的液态玻璃浮层中，左侧竖条跟随日历颜色。标题和备注按内容自动伸缩，日期与时间分别操作，保留明确的保存、取消和删除。普通日程只删除当前记录；重复日程默认仅删除当前一次，也可选择“此日程及未来日程”或“整个重复系列”，删除未来日程会保留之前的历史。
 
-![新日程浮层与独立日期选择月历](docs/screenshots/editor-2.1.png)
+![紧凑液态玻璃日程浮层](docs/screenshots/editor-2.2.1.png)
 
 ### 设置与小窗口
 
@@ -141,11 +141,11 @@ https://calendars.icloud.com/holidays/cn_zh.ics/
 
 点击“测试通知”可测试当前方式。悬浮通知显示约10秒，悬停时暂停；“稍后提醒”会在10分钟后再次提醒，并持久化到 SQLite，重启后继续处理。“打开日程”会唤出主窗口并定位事件；日程改期后读取最新内容，未保存编辑会先确认。
 
-通知窗口按显示器工作区、任务栏和 DPI 定位，最多同时显示三条，其余进入队列。应用须保持运行；退出期间不会弹窗，恢复后处理已到期的稍后提醒。当前硬件已验证单显示器200% DPI，多显示器与其他缩放的测试范围见[通知设计与验证](docs/NOTIFICATION_DESIGN.md)。
+通知窗口固定贴主显示器可用区域右上边缘，文字加粗，按任务栏和 DPI 定位，最多同时显示三条，其余进入队列。应用须保持运行；退出期间不会弹窗，恢复后处理已到期的稍后提醒。当前硬件已验证单显示器200% DPI，多显示器与其他缩放的测试范围见[通知设计与验证](docs/NOTIFICATION_DESIGN.md)。
 
-![浅色悬浮提醒，按实际内容收紧高度](docs/screenshots/notification-light-2.2.png)
+![浅色悬浮提醒，按实际内容收紧高度](docs/screenshots/notification-light-2.2.1.png)
 
-![深色悬浮提醒](docs/screenshots/notification-dark-2.2.png)
+![深色悬浮提醒](docs/screenshots/notification-dark-2.2.1.png)
 
 ## 数据与隐私
 
@@ -201,6 +201,7 @@ npx tauri build --config src-tauri/tauri.ui-preview.conf.json --no-bundle
 npm run test:tauri-account     # CalDAV、ICS、创建修改、草稿与跨天显示
 npm run test:tauri-desktop     # 原生窗口、托盘、侧栏、字体与年视图
 npm run test:tauri-polish      # 编辑器、日期选择、统一时区与明暗主题
+npm run test:tauri-editor      # 自适应弹窗、单次/未来/系列删除及同步
 npm run test:tauri-capacity    # 多窗口尺寸的真实日格容量与数量折叠
 npm run test:tauri-notification # 焦点、DPI、堆叠、后台触发、稍后提醒与重启恢复
 npm run test:tauri-silent      # 静默启动与唤出
@@ -268,7 +269,7 @@ fonts/          字体素材与说明
 docs/           发布说明、截图与历史记录
 ```
 
-当前版本变化见 [2.2.0 发布说明](docs/RELEASE_NOTES_2.2.0.md) 和 [全部正式发布](https://github.com/xiaomohaa/shixu-calendar/releases)。
+当前版本变化见 [2.2.1 发布说明](docs/RELEASE_NOTES_2.2.1.md) 和 [全部正式发布](https://github.com/xiaomohaa/shixu-calendar/releases)。
 
 旧版使用与构建说明保存在 [Electron 1.3.0 历史归档](docs/archive/README_ELECTRON_1.3.0.md)。迁移计划、早期设计及验收记录仅作为历史资料，不代表当前界面或发布状态。
 

@@ -4,7 +4,7 @@ import type { Resource } from '../database/store';
 type Job =
   | { kind: 'edit'; input: EventInput; original?: string }
   | { kind: 'detail'; resource: Resource; scope: 'series' | 'instance'; recurrenceId?: string; timezone: string }
-  | { kind: 'exclude'; ics: string; recurrenceId: string }
+  | { kind: 'exclude' | 'deleteFuture'; ics: string; recurrenceId: string }
   | { kind: 'copy'; ics: string };
 type Response = { id: number; ok: true; value: unknown } | { id: number; ok: false; error: string };
 

@@ -9,13 +9,23 @@ import { EventDateTime } from './EventDateTime';
 
 export function Editor({ initial, calendars, close, saved, anchor, duration = 60, changed, displayTimezone, registerCloseGuard }: { initial: EventInput; calendars: Calendar[]; close: () => void; saved: () => void; anchor?: PanelAnchor; duration?: number; changed?: (draft: EventInput) => void; displayTimezone: string; registerCloseGuard?: (guard: () => boolean) => void }) {
   const [form, setForm] = useState(initial), [busy, setBusy] = useState(false), [error, setError] = useState(''), [confirmDelete, setConfirmDelete] = useState(false);
-  const titleInput = useRef<HTMLTextAreaElement>(null), dirty = useRef(false);
+  const titleInput = useRef<HTMLTextAreaElement>(null), notesInput = useRef<HTMLTextAreaElement>(null), dirty = useRef(false);
+  const [deleteScope, setDeleteScope] = useState<'instance' | 'future' | 'series'>('instance');
+  const recurring = !!(initial.rrule || initial.recurrenceId);
   useEffect(() => {
     registerCloseGuard?.(() => !dirty.current || window.confirm('打开提醒中的日程？当前未保存的修改将被放弃。'));
     return () => registerCloseGuard?.(() => true);
   },[registerCloseGuard]);
   useEffect(() => { if (!form.resourceId) changed?.(form); }, [form, changed]);
-  useLayoutEffect(() => { const input = titleInput.current; if (input) { input.style.height = 'auto'; input.style.height = `${Math.max(48, Math.min(100, input.scrollHeight))}px`; } }, [form.title]);
+  useLayoutEffect(() => {
+    const inputs = [titleInput.current, notesInput.current].filter((input): input is HTMLTextAreaElement => !!input);
+    const fit = (input: HTMLTextAreaElement) => { input.style.height = '0px'; input.style.height = `${Math.max(34, Math.min(112, input.scrollHeight + 2))}px`; };
+    inputs.forEach(fit);
+    const widths = new WeakMap<Element, number>();
+    const observer = new ResizeObserver(entries => entries.forEach(entry => { if (widths.get(entry.target) !== entry.contentRect.width) { widths.set(entry.target, entry.contentRect.width); fit(entry.target as HTMLTextAreaElement); } }));
+    inputs.forEach(input => observer.observe(input));
+    return () => observer.disconnect();
+  }, [form.title, form.description]);
   const set = <K extends keyof EventInput>(key: K, value: EventInput[K]) => { dirty.current = true; setForm(f => ({ ...f, [key]: value })); };
   const [custom, setCustom] = useState(!['', 'FREQ=DAILY', 'FREQ=WEEKLY', 'FREQ=MONTHLY', 'FREQ=YEARLY'].includes(initial.rrule));
   const dismiss = () => { if (!dirty.current || window.confirm('放弃尚未保存的日程修改？')) close(); };
@@ -28,9 +38,9 @@ export function Editor({ initial, calendars, close, saved, anchor, duration = 60
   const scope = async (value: 'series' | 'instance') => { if (!form.resourceId) return; setBusy(true); try { const input = await window.shixu.eventDetail(form.resourceId, value, form.recurrenceId); setForm(input); dirty.current = false; setError(''); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };
   const color = calendars.find(calendar => calendar.id === form.calendarId)?.color || '#a638eb';
   return <Panel title={form.resourceId ? '编辑日程' : '新建日程'} floating hideHeader anchor={anchor} close={dismiss}>
-    <form className="editor-body reference-event-editor" style={{ '--event-color': color } as CSSProperties} onSubmit={e => { e.preventDefault(); void act(() => window.shixu.saveEvent(form)); }}>
+    <form className="editor-body reference-event-editor" style={{ '--event-color': color } as CSSProperties} onSubmit={e => { e.preventDefault(); if (!busy && !confirmDelete) void act(() => window.shixu.saveEvent(form)); }}>
       <div className="event-primary">
-        <textarea ref={titleInput} className="event-title-input" aria-label="日程标题" placeholder="新建日程" autoFocus required maxLength={500} rows={2} value={form.title} onChange={e => set('title', e.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.blur(); } }}/>
+        <textarea ref={titleInput} className="event-title-input" aria-label="日程标题" placeholder="新建日程" autoFocus required maxLength={500} rows={1} value={form.title} onChange={e => set('title', e.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); event.currentTarget.blur(); } }}/>
         <div className="event-options" role="group" aria-label="日程设置">
           {form.resourceId && (form.rrule || form.recurrenceId) && <label className="event-option-row"><span>修改范围：</span><select aria-label="修改范围" disabled={busy} value={form.scope} onChange={e => void scope(e.target.value as 'series' | 'instance')}><option value="instance">仅此一次</option><option value="series">整个重复系列</option></select></label>}
           <label className="event-option-row"><span>全天：</span><div className="event-all-day-control"><input type="checkbox" aria-label="全天日程" disabled={busy} checked={form.allDay} onChange={e => {
@@ -47,10 +57,13 @@ export function Editor({ initial, calendars, close, saved, anchor, duration = 60
       </div>
       <div className="event-location-box"><input aria-label="地点" placeholder="添加位置或视频通话" value={form.location} disabled={busy} onChange={e => set('location', e.target.value)}/></div>
       <div className="event-calendar-box"><i aria-hidden="true"/><select aria-label="所属日历" disabled={!!form.resourceId || busy} value={form.calendarId} required onChange={e => set('calendarId', e.target.value)}><option value="" disabled>选择日历</option>{calendars.filter(c => !c.readOnly || c.id === form.calendarId).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>
-      <div className="event-notes-box"><textarea aria-label="备注" rows={2} placeholder="添加备注或 URL" value={form.description} disabled={busy} onChange={e => set('description', e.target.value)}/></div>
+      <div className="event-notes-box"><textarea ref={notesInput} aria-label="备注" rows={1} placeholder="添加备注或 URL" value={form.description} disabled={busy} onChange={e => set('description', e.target.value)}/></div>
       {error && <div className="error-box" role="alert">{error}</div>}
-      {confirmDelete && <div className="confirm-box"><p>确认删除{form.scope === 'instance' ? '此次日程' : '整个日程系列'}？同步后也会从服务器删除。</p><button type="button" disabled={busy} className="danger" onClick={() => void act(() => window.shixu.deleteEvent(form.resourceId!, form.scope, form.recurrenceId))}>确认删除</button><button type="button" onClick={() => setConfirmDelete(false)}>返回</button></div>}
-      <footer className="panel-footer">{form.resourceId && <button type="button" className="danger ghost" disabled={busy} onClick={() => setConfirmDelete(true)}><Trash2 size={12}/>删除</button>}<span className="spacer"/><button type="button" disabled={busy} onClick={dismiss}>取消</button><button className="primary" disabled={busy || !form.calendarId}>{busy ? <Busy text="保存中"/> : <><Check size={12}/>保存日程</>}</button></footer>
+      {confirmDelete && <div className="confirm-box event-delete-confirm" role="group" aria-label="删除日程确认">
+        {recurring ? <><label className="event-delete-scope">删除范围<select aria-label="删除范围" disabled={busy} value={deleteScope} onChange={event => setDeleteScope(event.target.value as typeof deleteScope)}><option value="instance" disabled={!initial.recurrenceId}>仅此日程</option><option value="future" disabled={!initial.recurrenceId}>此日程及未来日程</option><option value="series">整个重复系列</option></select></label><p>{deleteScope === 'instance' ? '仅删除当前这一次，其他重复日程保留。' : deleteScope === 'future' ? '删除当前这一次及之后的重复日程，之前的记录保留。' : '删除整个重复系列，包括之前的记录。'}</p></> : <p>确认删除当前日程？同步后也会从服务器删除。</p>}
+        <button type="button" disabled={busy} className="danger" onClick={() => void act(() => window.shixu.deleteEvent(form.resourceId!, recurring ? deleteScope : 'series', initial.recurrenceId))}>确认删除</button><button type="button" disabled={busy} onClick={() => setConfirmDelete(false)}>返回</button>
+      </div>}
+      <footer className="panel-footer">{form.resourceId && <button type="button" className="danger ghost" disabled={busy || confirmDelete} onClick={() => { setDeleteScope(recurring && !initial.recurrenceId ? 'series' : 'instance'); setConfirmDelete(true); }}><Trash2 size={12}/>删除</button>}<span className="spacer"/><button type="button" disabled={busy} onClick={dismiss}>取消</button><button className="primary" disabled={busy || confirmDelete || !form.calendarId}>{busy ? <Busy text="保存中"/> : <><Check size={12}/>保存日程</>}</button></footer>
     </form>
   </Panel>;
 }

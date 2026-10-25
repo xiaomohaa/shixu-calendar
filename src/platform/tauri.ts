@@ -65,10 +65,10 @@ if (window.__TAURI_INTERNALS__ && getCurrentWindow().label === 'main') {
     },
     deleteEvent: async (id, scope, rid) => {
       const resource = await call<Resource>('eventResource', id);
-      if (scope === 'instance') {
+      if (scope === 'instance' || scope === 'future') {
         if (!rid) throw new Error('请选择重复实例');
-        const ics = await editInWorker<string>({ kind: 'exclude', ics: resource.ics, recurrenceId: rid });
-        await call('queueEvent', resource.calendarId, resource.id, resource.ics, ics, false);
+        const ics = await editInWorker<string | null>({ kind: scope === 'future' ? 'deleteFuture' : 'exclude', ics: resource.ics, recurrenceId: rid });
+        await call('queueEvent', resource.calendarId, resource.id, resource.ics, ics ?? resource.ics, ics === null);
       } else {
         await call('queueEvent', resource.calendarId, resource.id, resource.ics, resource.ics, true);
       }

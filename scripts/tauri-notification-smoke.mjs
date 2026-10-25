@@ -80,6 +80,11 @@ try {
   await main.getByRole('button',{name:'测试通知',exact:true}).click();
   const first=await findToast('测试日程提醒');
   const focusAfter=inspect(); if(focusAfter.Foreground!==before)throw new Error(`Notification focus mismatch: ${JSON.stringify({before,after:focusAfter.Foreground,windows:focusAfter.Windows})}`);
+  const primary=await main.evaluate(()=>window.__TAURI_INTERNALS__.invoke('plugin:window|primary_monitor',{label:'main'}));
+  const frame=focusAfter.Windows.find(window=>window.Visible&&window.Title.includes('日程提醒'));
+  if(!frame||frame.Bounds.Top!==primary.workArea.position.y||frame.Bounds.Right!==primary.workArea.position.x+primary.workArea.size.width)throw new Error(`Notification not anchored at primary work area edge: ${JSON.stringify({frame,primary})}`);
+  const weights=await first.locator('.reminder-toast').evaluate(element=>[element.querySelector('h1'),element.querySelector('p'),element.querySelector('footer button')].map(node=>Number(getComputedStyle(node).fontWeight)));
+  if(weights.some(weight=>weight<650))throw new Error(`Reminder typography is not bold: ${weights}`);
   if(await first.evaluate(()=>typeof window.shixu)!=='undefined')throw new Error('Notification booted the main app API/scheduler');
   const denied=await first.evaluate(async()=>{try{await window.__TAURI_INTERNALS__.invoke('shixu_call',{method:'snapshot',args:[{}]});return false;}catch{return true;}});
   if(!denied)throw new Error('Notification window can access main calendar IPC');

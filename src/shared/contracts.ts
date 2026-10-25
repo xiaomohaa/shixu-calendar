@@ -65,7 +65,7 @@ export interface Api {
   sync(id?: string): Promise<void>;
   cancelSync(): Promise<void>;
   saveEvent(input: EventInput): Promise<void>;
-  deleteEvent(resourceId: string, scope: 'series' | 'instance', recurrenceId?: string): Promise<void>;
+  deleteEvent(resourceId: string, scope: 'series' | 'instance' | 'future', recurrenceId?: string): Promise<void>;
   setCalendar(id: string, visible: boolean, color: string): Promise<void>;
   settings(input: Settings): Promise<void>;
   resolveConflict(id: string, choice: 'local' | 'remote' | 'both'): Promise<void>;

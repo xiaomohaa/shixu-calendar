@@ -110,7 +110,9 @@ pub fn stack_placements(area: WorkArea, logical_heights: &[u32]) -> Vec<Placemen
     } else {
         1.0
     };
-    let margin = (16.0 * scale).round() as u32;
+    // The transparent webview already reserves 8 logical pixels for its shadow.
+    // Anchor the window itself at the primary work area's edge.
+    let margin = 0u32;
     let mx = margin.min((area.width - 1) / 2);
     let my = margin.min((area.height - 1) / 2);
     let width = ((384.0 * scale).round() as u32)
@@ -182,35 +184,9 @@ fn monitor_key(monitor: &tauri::Monitor) -> String {
     format!("{},{}", monitor.position().x, monitor.position().y)
 }
 fn target_monitor(app: &AppHandle) -> Result<tauri::Monitor, String> {
-    #[cfg(windows)]
-    unsafe {
-        use windows::Win32::{
-            Foundation::RECT,
-            UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetThreadDpiAwarenessContext},
-            UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowRect},
-        };
-        let hwnd = GetForegroundWindow();
-        let mut rect = RECT::default();
-        let previous = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
-        let physical_rect = GetWindowRect(hwnd, &mut rect);
-        if !previous.0.is_null() {
-            let _ = SetThreadDpiAwarenessContext(previous);
-        }
-        if physical_rect.is_ok() {
-            let x = (rect.left as f64 + rect.right as f64) / 2.0;
-            let y = (rect.top as f64 + rect.bottom as f64) / 2.0;
-            if let Ok(Some(monitor)) = app.monitor_from_point(x, y) {
-                return Ok(monitor);
-            }
-        }
-    }
-    if let Some(window) = app.get_webview_window("main") {
-        if let Ok(Some(monitor)) = window.current_monitor() {
-            return Ok(monitor);
-        }
-    }
     app.primary_monitor()
         .map_err(|_| "无法读取显示器")?
+        .or_else(|| app.available_monitors().ok()?.into_iter().next())
         .ok_or_else(|| "找不到可用显示器".into())
 }
 fn apply_placement(window: &tauri::WebviewWindow, frame: Placement) -> Result<(), String> {
@@ -467,16 +443,14 @@ pub fn maintain(app: &AppHandle) {
 
 fn reflow(app: &AppHandle) {
     let manager = app.state::<Notifications>();
-    if let (Ok(monitors), Ok(fallback)) = (app.available_monitors(), target_monitor(app)) {
+    if let Ok(fallback) = target_monitor(app) {
         let mut groups = HashMap::<String, Vec<u32>>::new();
         let mut moves = Vec::new();
         let mut overflow = Vec::new();
         if let Ok(mut active) = manager.active.lock() {
             for item in active.iter_mut() {
-                let monitor = monitors
-                    .iter()
-                    .find(|monitor| monitor_key(monitor) == item.monitor)
-                    .unwrap_or(&fallback);
+                // Follow primary-monitor changes even while cards are visible.
+                let monitor = &fallback;
                 item.monitor = monitor_key(monitor);
                 let heights = groups.entry(item.monitor.clone()).or_default();
                 heights.push(item.logical_height);
@@ -711,7 +685,7 @@ mod tests {
         assert_eq!(frames.len(), 3);
         assert_eq!(
             frames.iter().map(|frame| frame.y).collect::<Vec<_>>(),
-            vec![72, 312, 632]
+            vec![40, 280, 600]
         );
         assert_eq!(
             frames.iter().map(|frame| frame.height).collect::<Vec<_>>(),
@@ -743,8 +717,8 @@ mod tests {
             0,
         )
         .unwrap();
-        assert_eq!(frame.x, -800);
-        assert_eq!(frame.y, 72);
+        assert_eq!(frame.x, -768);
+        assert_eq!(frame.y, 40);
         assert_eq!(frame.height, 332);
     }
     #[test]

@@ -4,14 +4,14 @@ html[data-surface="notification"], html[data-surface="notification"] body, html[
 .reminder-toast.is-leaving { animation:reminder-out .21s ease-in both; pointer-events:none; }
 .reminder-toast header { display:flex; align-items:center; gap:6px; min-width:0; }
 .reminder-toast header img { width:18px; height:18px; border-radius:5px; }
-.reminder-toast header span { font-size:10px; font-weight:600; }
+.reminder-toast header span { font-size:10px; font-weight:700; }
 .reminder-toast header small { margin-left:auto; font-size:9px; color:var(--muted); }
 .reminder-toast header button { display:grid; place-items:center; width:18px; height:18px; padding:0; border:0; border-radius:50%; background:transparent; box-shadow:none; color:var(--muted); }
 .reminder-toast header button:hover { background:var(--hover); }
-.reminder-toast h1 { margin:0; font-size:13px; line-height:1.35; font-weight:650; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
-.reminder-toast p { margin:0; font-size:11px; line-height:1.45; color:var(--muted); display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
+.reminder-toast h1 { margin:0; font-size:13px; line-height:1.35; font-weight:700; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
+.reminder-toast p { margin:0; font-size:11px; line-height:1.45; font-weight:650; color:var(--muted); display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; overflow-wrap:anywhere; }
 .reminder-toast footer { display:flex; align-items:end; gap:6px; }
-.reminder-toast footer button { height:24px; padding:3px 9px; border-radius:8px; border:1px solid color-mix(in oklab,var(--line) 65%,transparent); background:color-mix(in oklab,var(--panel) 55%,transparent); box-shadow:inset 0 1px 1px var(--field); font-size:11px; gap:4px; }
+.reminder-toast footer button { height:24px; padding:3px 9px; border-radius:8px; border:1px solid color-mix(in oklab,var(--line) 65%,transparent); background:color-mix(in oklab,var(--panel) 55%,transparent); box-shadow:inset 0 1px 1px var(--field); font-size:11px; font-weight:650; gap:4px; }
 .reminder-toast footer .reminder-open { margin-left:auto; color:var(--accent); }
 @keyframes reminder-in { from { opacity:0; transform:translateX(105%); } to { opacity:1; transform:translateX(0); } }
 @keyframes reminder-out { from { opacity:1; transform:translateX(0); } to { opacity:0; transform:translateX(105%); } }
