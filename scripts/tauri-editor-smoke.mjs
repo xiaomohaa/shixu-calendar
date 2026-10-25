@@ -47,13 +47,14 @@ try {
     blur:getComputedStyle(element.closest('.floating-editor')).backdropFilter,
   }));
   const short=await metrics();
-  if(short.titleOverflow||short.title>40||short.notes>40||short.rows.some(height=>height>24)||short.fields.some(height=>height>36)||short.panel>390||!short.blur.includes('blur(36px)'))throw new Error(`Editor not compact/glass: ${JSON.stringify(short)}`);
+  if(short.titleOverflow||short.title>40||short.notes>40||short.rows.some(height=>height>24)||short.fields.some(height=>height>36)||short.panel>390||!short.blur.includes('blur(24px)'))throw new Error(`Editor not compact/glass: ${JSON.stringify(short)}`);
   const title=page.getByRole('textbox',{name:'日程标题',exact:true}),notes=page.getByRole('textbox',{name:'备注',exact:true});
   await title.fill('这是需要自动换行显示的长日程标题。'.repeat(5));await notes.fill('较长备注需要自动伸展。'.repeat(20));
   const long=await metrics();if(long.title<=short.title||long.notes<=short.notes)throw new Error('Textareas did not grow');
   await title.fill('紧凑日程');await notes.fill('');
   if((await metrics()).title!==short.title||(await metrics()).notes!==short.notes)throw new Error('Textareas did not shrink after clearing');
   await page.locator('.floating-editor').screenshot({path:'.smoke-data/compact-editor-light.png'});
+  await page.screenshot({path:'.smoke-data/glass-editor-context.png'});
   await page.evaluate(async()=>{const state=await window.shixu.snapshot();await window.shixu.settings({...state.settings,theme:'dark'});});
   await page.waitForFunction(()=>document.documentElement.dataset.theme==='dark');
   await page.locator('.floating-editor').screenshot({path:'.smoke-data/compact-editor-dark.png'});
@@ -81,6 +82,7 @@ try {
   if((await page.evaluate(()=>window.shixu.snapshot())).conflicts.length)throw new Error('Deletes introduced sync conflicts');
   await open('未来删除测试','20');
   await page.setViewportSize({width:480,height:360});
+  await page.waitForFunction(()=>{const bounds=document.querySelector('.floating-editor')?.getBoundingClientRect();return bounds&&bounds.x>=0&&bounds.y>=0&&bounds.right<=innerWidth&&bounds.bottom<=innerHeight;});
   const box=await page.locator('.floating-editor').boundingBox();
   if(box.x<0||box.y<0||box.x+box.width>480||box.y+box.height>360)throw new Error('Small editor out of bounds');
   await page.getByRole('button',{name:'取消',exact:true}).click();

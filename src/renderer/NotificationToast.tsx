@@ -5,7 +5,7 @@ import { X, Clock3 } from 'lucide-react';
 import type { ReminderNotice } from '../shared/reminders';
 import './notification-toast.css';
 
-const call = <T,>(method: string, paused?: boolean, height?: number) => invoke<T>('notification_call', { method, paused, height });
+const call = <T,>(method: string, paused?: boolean, height?: number, reducedMotion?: boolean) => invoke<T>('notification_call', { method, paused, height, reducedMotion });
 
 export function NotificationToast() {
   const [notice,setNotice] = useState<ReminderNotice>(), [theme,setTheme] = useState('system'), [leaving,setLeaving] = useState(false), [error,setError] = useState('');
@@ -22,7 +22,7 @@ export function NotificationToast() {
       const exit = await listen('shixu:notification-exit', () => leave('dismiss'));
       const theme = await listen<string>('shixu:notification-theme', event => setTheme(event.payload));
       if (disposed) { exit(); theme(); return; } stops.push(exit,theme);
-      try { const notice = await call<ReminderNotice>('ready'); if (!disposed) { setNotice(notice); setTheme(notice.theme); } }
+      try { const notice = await call<ReminderNotice>('ready',undefined,undefined,matchMedia('(prefers-reduced-motion: reduce)').matches); if (!disposed) { setNotice(notice); setTheme(notice.theme); } }
       catch (error) { if (!disposed) setError((error as Error).message); }
     };
     void subscribe();
@@ -38,7 +38,7 @@ export function NotificationToast() {
     const element = card.current; if (!notice || !element) return;
     let disposed = false;
     const measure = () => {
-      const height = Math.max(80, Math.min(260, Math.ceil(element.getBoundingClientRect().height) + 16));
+      const height = Math.max(80, Math.min(260, Math.ceil(element.getBoundingClientRect().height) + 8));
       if (height === lastHeight.current) return; lastHeight.current = height;
       void call('resize',undefined,height).then(() => call('present')).catch(error => { if (!disposed) setError((error as Error).message); });
     };

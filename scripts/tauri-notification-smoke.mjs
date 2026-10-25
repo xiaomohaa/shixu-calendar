@@ -18,6 +18,7 @@ public static class NoticeWin {
  [StructLayout(LayoutKind.Sequential)] public struct Rect { public int Left,Top,Right,Bottom; }
  [StructLayout(LayoutKind.Sequential)] public struct Info { public int Size; public Rect Monitor,Work; public uint Flags; }
  public class Entry { public long Handle; public string Title; public bool Visible; public long Style; public uint Dpi; public Rect Bounds,Work; }
+ public class Sample { public long Ms; public int Y; }
  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")] static extern IntPtr SetThreadDpiAwarenessContext(IntPtr value);
  [DllImport("user32.dll")] public static extern bool PostMessage(IntPtr h,uint m,IntPtr w,IntPtr l);
@@ -34,6 +35,13 @@ public static class NoticeWin {
   SetThreadDpiAwarenessContext(new IntPtr(-4)); var list=new List<Entry>(); EnumWindows((h,p)=>{uint pid; GetWindowThreadProcessId(h,out pid); if(pid!=target)return true;
    var title=new StringBuilder(512); GetWindowText(h,title,512); Rect r;GetWindowRect(h,out r);var info=new Info();info.Size=Marshal.SizeOf(typeof(Info));GetMonitorInfo(MonitorFromWindow(h,2),ref info);
    list.Add(new Entry{Handle=h.ToInt64(),Title=title.ToString(),Visible=IsWindowVisible(h),Style=GetWindowLongPtr(h,-20).ToInt64(),Dpi=GetDpiForWindow(h),Bounds=r,Work=info.Work});return true;},IntPtr.Zero);return list.ToArray();
+ }
+ public static Sample[] CloseAndTrack(long close,long follow) {
+  SetThreadDpiAwarenessContext(new IntPtr(-4)); var samples=new List<Sample>(); var watch=System.Diagnostics.Stopwatch.StartNew();
+  Rect r; if(!GetWindowRect(new IntPtr(follow),out r))throw new Exception("Follow window disappeared before motion sampling"); samples.Add(new Sample{Ms=0,Y=r.Top});
+  PostMessage(new IntPtr(close),16,IntPtr.Zero,IntPtr.Zero);
+  while(watch.ElapsedMilliseconds<700){ GetWindowRect(new IntPtr(follow),out r); samples.Add(new Sample{Ms=watch.ElapsedMilliseconds,Y=r.Top}); System.Threading.Thread.Sleep(10); }
+  return samples.ToArray();
  }
 }`;
 const native = command => execFileSync('powershell.exe',['-NoProfile','-Command',`Add-Type -TypeDefinition @'\n${nativeSource}\n'@\n${command}`],{ encoding:'utf8' }).trim();
@@ -89,7 +97,7 @@ try {
   const denied=await first.evaluate(async()=>{try{await window.__TAURI_INTERNALS__.invoke('shixu_call',{method:'snapshot',args:[{}]});return false;}catch{return true;}});
   if(!denied)throw new Error('Notification window can access main calendar IPC');
   const fit=await first.locator('.reminder-toast').evaluate(el=>({height:el.getBoundingClientRect().height,window:innerHeight}));
-  if(Math.abs(fit.window-fit.height-16)>1||fit.window>=166)throw new Error(`Short notification kept blank fixed height: ${JSON.stringify(fit)}`);
+  if(Math.abs(fit.window-fit.height-8)>1||fit.window>=166)throw new Error(`Short notification kept blank fixed height: ${JSON.stringify(fit)}`);
   await first.screenshot({path:'.smoke-data/notification-light.png'});
   await main.evaluate(async()=>{const state=await window.shixu.snapshot();await window.shixu.settings({...state.settings,theme:'dark'});});
   await until(async()=>await first.evaluate(()=>document.documentElement.dataset.theme)==='dark','Existing toast did not update theme');
@@ -109,19 +117,30 @@ try {
   await long.screenshot({path:'.smoke-data/notification-adaptive.png'});await closeAll();
   for(let i=0;i<4;i++)await send(`stack-${Date.now()}-${i}`,`堆叠提醒 ${i+1}`);
   await until(()=>toastPages().length>=2,'Notifications did not stack');await new Promise(resolve=>setTimeout(resolve,800));
-  const visible=inspect().Windows.filter(w=>w.Visible&&w.Title==='时序日历 · 日程提醒').sort((a,b)=>a.Bounds.Top-b.Bounds.Top);
+  for(const page of toastPages())await page.evaluate(async()=>{
+    const pause=()=>window.__TAURI_INTERNALS__.invoke('notification_call',{method:'hover',paused:true}).catch(()=>{});
+    await pause();setInterval(pause,1000);
+  });
+  const stackState=inspect();
+  const visible=stackState.Windows.filter(w=>w.Visible&&w.Title==='时序日历 · 日程提醒').sort((a,b)=>a.Bounds.Top-b.Bounds.Top);
   if(visible.length<2||visible.length>3)throw new Error('Incorrect visible notification stack size');
-  if(inspect().Windows.some(w=>w.Handle===inspect().Foreground&&w.Title==='时序日历 · 日程提醒'))throw new Error('Stacked notification took focus');
+  if(stackState.Windows.some(w=>w.Handle===stackState.Foreground&&w.Title==='时序日历 · 日程提醒'))throw new Error('Stacked notification took focus');
   for(let i=0;i<visible.length;i++){
     const {Bounds:r,Work:w,Style:style,Dpi:dpi}=visible[i];
     if(r.Left<w.Left||r.Top<w.Top||r.Right>w.Right||r.Bottom>w.Bottom)throw new Error('Notification crossed work area/taskbar boundary');
-    if(i&&r.Top<visible[i-1].Bounds.Bottom)throw new Error('Stacked native windows overlap');
+    if(i&&Math.abs(r.Top-visible[i-1].Bounds.Bottom)>2)throw new Error('Notification stack kept excessive gap or overlaps');
     if(!(style&8)||!(style&0x08000000))throw new Error('Notification is not topmost/non-activating');
     if(Math.abs((r.Right-r.Left)-384*dpi/96)>3)throw new Error('Native notification size does not follow monitor DPI');
   }
   console.log(`Verified native stack: ${visible.length} windows, DPI ${visible.map(w=>w.Dpi).join(',')}`);
   await main.evaluate(async()=>{const state=await window.shixu.snapshot();await window.shixu.settings({...state.settings,closeToTray:false});});
-  native(`$null=[NoticeWin]::PostMessage([IntPtr]::new(${visible[0].Handle}),16,[IntPtr]::Zero,[IntPtr]::Zero)`);
+  const samples=JSON.parse(native(`[NoticeWin]::CloseAndTrack(${visible[0].Handle},${visible[1].Handle}) | ConvertTo-Json -Compress`));
+  const startY=visible[1].Bounds.Top,targetY=visible[0].Bounds.Top;
+  const intermediate=new Set(samples.filter(sample=>sample.Y>targetY&&sample.Y<startY).map(sample=>sample.Y));
+  const finished=samples.find(sample=>Math.abs(sample.Y-targetY)<=1);
+  if(intermediate.size<4||!finished||finished.Ms>500)throw new Error(`Stack did not promptly/smoothly fill slot: ${JSON.stringify({intermediate:[...intermediate],finished,samples})}`);
+  if(samples.some((sample,index)=>index&&sample.Y>samples[index-1].Y+1))throw new Error('Stack refill jittered backwards');
+  console.log(`Verified immediate animated refill: ${intermediate.size} intermediate positions, settled ${finished.Ms}ms after close`);
   await until(()=>app.exitCode===null&&toastPages().length<=3,'Closing notification affected application lifecycle');
   await until(async()=>{for(const page of toastPages())if((await page.locator('h1').textContent({timeout:200}))==='堆叠提醒 4')return true;},'Queued notification did not fill released slot');
   await closeAll();

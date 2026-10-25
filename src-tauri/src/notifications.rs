@@ -4,8 +4,8 @@ use serde_json::Value;
 use std::{
     collections::HashMap,
     sync::{
-        Mutex,
         atomic::{AtomicBool, Ordering},
+        Mutex,
     },
     time::{Duration, Instant},
 };
@@ -110,7 +110,7 @@ pub fn stack_placements(area: WorkArea, logical_heights: &[u32]) -> Vec<Placemen
     } else {
         1.0
     };
-    // The transparent webview already reserves 8 logical pixels for its shadow.
+    // The webview already reserves 4 logical pixels above/below for its shadow.
     // Anchor the window itself at the primary work area's edge.
     let margin = 0u32;
     let mx = margin.min((area.width - 1) / 2);
@@ -119,7 +119,6 @@ pub fn stack_placements(area: WorkArea, logical_heights: &[u32]) -> Vec<Placemen
         .min(area.width - mx * 2)
         .max(1);
     let available = area.height - 2 * my;
-    let gap = (10.0 * scale).round() as u32;
     let mut offset = 0u64;
     let mut frames = Vec::new();
     for logical_height in logical_heights.iter().take(3) {
@@ -135,7 +134,8 @@ pub fn stack_placements(area: WorkArea, logical_heights: &[u32]) -> Vec<Placemen
             width,
             height,
         });
-        offset += height as u64 + gap as u64;
+        // Adjacent native frames leave an 8px visible gap between card faces.
+        offset += height as u64;
     }
     frames
 }
@@ -162,6 +162,106 @@ pub struct Notifications {
     active: Mutex<Vec<Active>>,
     pending_open: Mutex<Option<EventReference>>,
     pumping: AtomicBool,
+    layout: Mutex<Layout>,
+    reduced_motion: AtomicBool,
+}
+#[derive(Default)]
+struct Layout {
+    targets: HashMap<String, Placement>,
+    generation: u64,
+}
+
+fn eased_position(
+    from: PhysicalPosition<i32>,
+    to: PhysicalPosition<i32>,
+    progress: f64,
+) -> PhysicalPosition<i32> {
+    let eased = 1.0 - (1.0 - progress.clamp(0.0, 1.0)).powi(4);
+    PhysicalPosition::new(
+        (from.x as f64 + (to.x as f64 - from.x as f64) * eased).round() as i32,
+        (from.y as f64 + (to.y as f64 - from.y as f64) * eased).round() as i32,
+    )
+}
+
+fn position_stack(app: &AppHandle, moves: Vec<(String, Placement)>, work: WorkArea) {
+    let manager = app.state::<Notifications>();
+    let targets: HashMap<_, _> = moves.iter().cloned().collect();
+    let generation = {
+        let Ok(mut layout) = manager.layout.lock() else {
+            return;
+        };
+        if layout.targets == targets {
+            return;
+        }
+        layout.targets = targets;
+        layout.generation = layout.generation.wrapping_add(1);
+        layout.generation
+    };
+    let mut animated = Vec::new();
+    for (label, frame) in moves {
+        let Some(window) = app.get_webview_window(&label) else {
+            continue;
+        };
+        let target = PhysicalPosition::new(frame.x, frame.y);
+        let from = window.outer_position().unwrap_or(target);
+        let current_size = window.outer_size().ok();
+        // Only animate vertical refills inside this work area. Monitor/DPI
+        // changes snap safely instead of traversing screen gaps or taskbars.
+        let same_column = from.x == target.x
+            && current_size.is_some_and(|size| {
+                size.width == frame.width
+                    && from.y >= work.y
+                    && from.y as i64 + size.height as i64 <= work.y as i64 + work.height as i64
+            });
+        if !window.is_visible().unwrap_or(false)
+            || manager.reduced_motion.load(Ordering::Relaxed)
+            || !same_column
+        {
+            let _ = apply_placement(&window, frame);
+        } else {
+            let size = PhysicalSize::new(frame.width, frame.height);
+            if current_size != Some(size) {
+                let _ = window.set_size(size);
+            }
+            if from != target {
+                animated.push((window, from, target));
+            }
+        }
+    }
+    if animated.is_empty() {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let start = Instant::now();
+        loop {
+            let manager = app.state::<Notifications>();
+            // A new layout retargets from actual positions, cancelling old motion.
+            if manager
+                .layout
+                .lock()
+                .map(|layout| layout.generation != generation)
+                .unwrap_or(true)
+            {
+                return;
+            }
+            let progress = if manager.reduced_motion.load(Ordering::Relaxed) {
+                1.0
+            } else {
+                (start.elapsed().as_secs_f64() / 0.22).min(1.0)
+            };
+            for (window, from, target) in &animated {
+                let position = eased_position(*from, *target, progress);
+                if window.outer_position().ok() != Some(position) {
+                    let _ = window.set_position(position);
+                }
+            }
+            if progress >= 1.0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(12)).await;
+        }
+    });
 }
 struct PumpGuard<'a>(&'a AtomicBool);
 impl Drop for PumpGuard<'_> {
@@ -206,7 +306,7 @@ fn show_without_activation(window: &tauri::WebviewWindow) -> Result<(), String> 
     unsafe {
         use windows::Win32::{
             Foundation::HWND,
-            UI::WindowsAndMessaging::{SW_SHOWNOACTIVATE, ShowWindow},
+            UI::WindowsAndMessaging::{ShowWindow, SW_SHOWNOACTIVATE},
         };
         let hwnd = HWND(window.hwnd().map_err(|_| "无法读取通知窗口")?.0);
         let _ = ShowWindow(hwnd, SW_SHOWNOACTIVATE);
@@ -353,10 +453,22 @@ pub fn closed(app: &AppHandle, label: &str) {
     if !label.starts_with(PREFIX) {
         return;
     }
+    let mut removed = false;
     if let Some(manager) = app.try_state::<Notifications>() {
         if let Ok(mut active) = manager.active.lock() {
+            let before = active.len();
             active.retain(|item| item.label != label);
+            removed = active.len() != before;
         }
+    }
+    if removed {
+        // Destroyed can run on the UI thread. Reflow off-thread immediately,
+        // rather than waiting up to two seconds for the maintenance heartbeat.
+        let app = app.clone();
+        tauri::async_runtime::spawn(async move {
+            reflow(&app);
+            let _ = pump(&app);
+        });
     }
 }
 fn destroy(app: &AppHandle, label: &str) {
@@ -464,11 +576,7 @@ fn reflow(app: &AppHandle) {
                 }
             }
         }
-        for (label, frame) in moves {
-            if let Some(window) = app.get_webview_window(&label) {
-                let _ = apply_placement(&window, frame);
-            }
-        }
+        position_stack(app, moves, area(&fallback));
         for label in overflow {
             destroy(app, &label);
         }
@@ -525,6 +633,7 @@ pub async fn notification_call(
     method: String,
     paused: Option<bool>,
     height: Option<u32>,
+    reduced_motion: Option<bool>,
 ) -> Result<Value, String> {
     let label = window.label();
     if !label.starts_with(PREFIX) {
@@ -540,7 +649,14 @@ pub async fn notification_call(
         .map(|active| active.notice.clone())
         .ok_or("通知已关闭")?;
     match method.as_str() {
-        "ready" => Ok(serde_json::to_value(&notice).map_err(|_| "提醒内容无效")?),
+        "ready" => {
+            if let Some(reduced) = reduced_motion {
+                app.state::<Notifications>()
+                    .reduced_motion
+                    .store(reduced, Ordering::Relaxed);
+            }
+            Ok(serde_json::to_value(&notice).map_err(|_| "提醒内容无效")?)
+        }
         "resize" => {
             let height = height
                 .filter(|height| (80..=260).contains(height))
@@ -642,6 +758,33 @@ pub async fn notification_call(
 mod tests {
     use super::*;
     #[test]
+    fn stack_frames_are_adjacent_and_motion_eases_without_overshoot() {
+        let frames = stack_placements(
+            WorkArea {
+                x: 0,
+                y: 0,
+                width: 1920,
+                height: 1080,
+                scale: 2.0,
+            },
+            &[110, 120, 130],
+        );
+        assert_eq!(frames[1].y, frames[0].y + frames[0].height as i32);
+        assert_eq!(frames[2].y, frames[1].y + frames[1].height as i32);
+        let from = PhysicalPosition::new(-700, 500);
+        let to = PhysicalPosition::new(-700, 0);
+        assert_eq!(eased_position(from, to, 0.0), from);
+        assert_eq!(eased_position(from, to, 1.0), to);
+        let mut previous = from.y;
+        for step in 1..=20 {
+            let next = eased_position(from, to, step as f64 / 20.0);
+            assert!(next.y <= previous && next.y >= to.y);
+            assert_eq!(next.x, to.x);
+            previous = next.y;
+        }
+        assert!(eased_position(from, to, 0.5).y < 50);
+    }
+    #[test]
     fn physical_work_areas_and_dpi_keep_stacks_within_bounds() {
         for scale in [1.0, 1.25, 1.5, 2.0] {
             for (x, y, width, height) in [
@@ -685,7 +828,7 @@ mod tests {
         assert_eq!(frames.len(), 3);
         assert_eq!(
             frames.iter().map(|frame| frame.y).collect::<Vec<_>>(),
-            vec![40, 280, 600]
+            vec![40, 260, 560]
         );
         assert_eq!(
             frames.iter().map(|frame| frame.height).collect::<Vec<_>>(),
@@ -734,37 +877,33 @@ mod tests {
         assert!(frame.width <= area.width && frame.height <= area.height);
         assert!(placement(area, 1).is_none());
         assert!(placement(WorkArea { width: 0, ..area }, 0).is_none());
-        assert!(
-            placement(
-                WorkArea {
-                    scale: f64::NAN,
-                    ..area
-                },
-                0
-            )
-            .is_some()
-        );
+        assert!(placement(
+            WorkArea {
+                scale: f64::NAN,
+                ..area
+            },
+            0
+        )
+        .is_some());
     }
     #[test]
     fn notification_payload_is_bounded_and_date_validated() {
         assert!(Notice::new("".into(), "test".into(), "".into(), None, false).is_err());
         assert!(Notice::new("a".into(), "中".repeat(500), "".into(), None, false).is_ok());
         assert!(Notice::new("a".into(), "中".repeat(501), "".into(), None, false).is_err());
-        assert!(
-            Notice::new(
-                "a".into(),
-                "test".into(),
-                "".into(),
-                Some(EventReference {
-                    resource_id: "r".into(),
-                    recurrence_id: None,
-                    start: "invalid".into(),
-                    all_day: false
-                }),
-                false
-            )
-            .is_err()
-        );
+        assert!(Notice::new(
+            "a".into(),
+            "test".into(),
+            "".into(),
+            Some(EventReference {
+                resource_id: "r".into(),
+                recurrence_id: None,
+                start: "invalid".into(),
+                all_day: false
+            }),
+            false
+        )
+        .is_err());
     }
     #[test]
     fn native_plugin_click_retains_the_delivery_key() {
