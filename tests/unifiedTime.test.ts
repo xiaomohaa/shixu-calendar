@@ -1,13 +1,28 @@
 import { describe, expect, it } from 'vitest';
 import { DateTime, Settings } from 'luxon';
 import { DEFAULT_TIMEZONE, defaultSettings, type EventInput } from '../src/shared/contracts';
-import { editorTime, sourceTime } from '../src/calendar/editorTime';
+import { editorTime, sourceTime, changedEventTime } from '../src/calendar/editorTime';
 import { editCalendar, editorInput, expandResource, parseCalendar } from '../src/ical/events';
 import type { Resource } from '../src/database/store';
 
 const input: EventInput = { calendarId:'cal', title:'统一显示', start:'2026-10-23T02:00:00Z', end:'2026-10-23T03:00:00Z', allDay:false, timezone:'UTC', location:'', description:'', rrule:'', reminder:-1, scope:'series' };
 const resource = (ics: string): Resource => ({ id:'r', calendarId:'cal', url:'https://example.com/cal/r.ics', etag:'"one"', ics, dirty:0, deleted:0 });
 describe('统一时区设置与来源时间保护', () => {
+  it('修改开始时间自动结束于一小时后，支持跨天并保留来源时区', () => {
+    const next=changedEventTime(input,'start','2026-10-25T23:30',DEFAULT_TIMEZONE);
+    expect(editorTime(next.end,next,DEFAULT_TIMEZONE)).toBe('2026-10-26T00:30');
+    expect(next.timezone).toBe('UTC');
+    const manual=changedEventTime(next,'end','2026-10-26T02:00',DEFAULT_TIMEZONE);
+    expect(editorTime(manual.end,manual,DEFAULT_TIMEZONE)).toBe('2026-10-26T02:00');
+    expect(changedEventTime(manual,'start','2026-10-25T10:00',DEFAULT_TIMEZONE).end).toBe('2026-10-25T03:00:00.000Z');
+  });
+  it('全天修改日期保留天数，普通日程跨夏令时按实际一小时计算', () => {
+    const allDay=changedEventTime({...input,allDay:true,start:'2026-10-25',end:'2026-10-27'},'start','2026-10-30',DEFAULT_TIMEZONE);
+    expect(allDay.end).toBe('2026-11-01');
+    const ny={...input,timezone:'America/New_York'};
+    const next=changedEventTime(ny,'start','2026-03-08T01:30','America/New_York');
+    expect(editorTime(next.end,next,'America/New_York')).toBe('2026-03-08T03:30');
+  });
   it('默认始终为 UTC+8，不跟随宿主机时区', () => {
     const previous = Settings.defaultZone;
     try { Settings.defaultZone = 'America/Los_Angeles'; expect(defaultSettings.timezone).toBe(DEFAULT_TIMEZONE); expect(DateTime.now().setZone(defaultSettings.timezone).offset).toBe(480); }

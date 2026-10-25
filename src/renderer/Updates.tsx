@@ -5,13 +5,14 @@ import type { UpdateState } from '../shared/updates';
 export function useUpdates() {
   const [state, setState] = useState<UpdateState | null>(null);
   useEffect(() => {
-    let active = true;
-    const unsubscribe = window.shixu?.onUpdateChange(next => { if (active) setState(next); });
-    void window.shixu?.updateState().then(next => { if (active) setState(next); }).catch(() => {});
+    let active = true, received = false;
+    const unsubscribe = window.shixu?.onUpdateChange(next => { received = true; if (active) setState(next); });
+    void window.shixu?.updateState().then(next => { if (active && !received) setState(next); }).catch(() => {});
     return () => { active = false; unsubscribe?.(); };
   }, []);
   return state;
 }
+export const hasAvailableUpdate = (state: UpdateState | null) => !!state?.release && state.release.version !== state.currentVersion && !['idle', 'current'].includes(state.phase);
 const phaseText: Record<UpdateState['phase'], string> = {
   idle: '随时检查新版本', checking: '正在检查新版本…', current: '已是最新版本', available: '有新版本可用',
   downloading: '正在下载更新…', downloaded: '更新已就绪', installing: '正在安全退出并安装…', error: '暂时无法完成更新',

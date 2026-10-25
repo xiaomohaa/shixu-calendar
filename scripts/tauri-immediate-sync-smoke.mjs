@@ -1,0 +1,34 @@
+import { chromium } from 'playwright';
+import { build } from 'esbuild';
+import { spawn } from 'node:child_process';
+import { mkdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { createRequire } from 'node:module';
+const data=resolve('.smoke-data',`immediate-sync-${Date.now()}`),require=createRequire(import.meta.url);
+await mkdir(data,{recursive:true});
+const fixturePath=resolve('.smoke-data/immediate-dav.cjs');await build({entryPoints:['tests/dav-server.ts'],outfile:fixturePath,bundle:true,platform:'node',format:'cjs'});
+const fixture=await require(fixturePath).davServer();
+const app=spawn(resolve(process.env.SHIXU_TAURI_TEST_EXE||'src-tauri/target/release/shixu-calendar.exe'),[],{env:{...process.env,SHIXU_TAURI_TEST_DATA_DIR:data,WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS:'--remote-debugging-port=9236'},stdio:'ignore'});
+const until=async(check,message)=>{for(let i=0;i<100;i++){try{const value=await check();if(value)return value;}catch(error){if(i===99)console.log('Last wait error',String(error));}await new Promise(resolve=>setTimeout(resolve,100));}throw new Error(message);};
+let browser,page,releasePut;
+const remote=title=>[...fixture.resources.values()].find(resource=>resource.ics.includes(`SUMMARY:${title}`));
+const local=title=>page.evaluate(async title=>(await window.shixu.events('2026-10-01','2026-11-01')).find(event=>event.title===title),title);
+const settled=()=>until(async()=>{const state=await page.evaluate(()=>window.shixu.snapshot());return !state.syncing.length&&!state.pending;},'Sync did not drain pending writes');
+try{
+  browser=await until(()=>chromium.connectOverCDP('http://127.0.0.1:9236'),'Preview did not start');page=await until(()=>browser.contexts().flatMap(context=>context.pages()).find(page=>page.url().startsWith('http://tauri.localhost/')),'Main missing');await page.locator('.month-grid').waitFor();
+  if((await page.evaluate(()=>window.shixu.desktopState())).mode!=='development')throw new Error('Isolated preview required');
+  const calendarId=await page.evaluate(async account=>{const id=await window.shixu.saveAccount(account);await window.shixu.sync(id);const state=await window.shixu.snapshot();await window.shixu.settings({...state.settings,autoSync:false,autoUpdateCheck:false});return state.calendars.find(calendar=>calendar.accountId===id).id;},fixture.account);
+  const save=title=>page.evaluate(({calendarId,title})=>window.shixu.saveEvent({calendarId,title,start:'2026-10-25T10:00:00',end:'2026-10-25T11:00:00',allDay:false,timezone:'Asia/Shanghai',location:'',description:'',rrule:'',reminder:-1,scope:'series'}),{calendarId,title});
+  const edit=async(title,next)=>{const event=await local(title);await page.evaluate(async({id,next})=>{const input=await window.shixu.eventDetail(id,'series');await window.shixu.saveEvent({...input,title:next});},{id:event.resourceId,next});};
+  const start=Date.now();await save('立即同步创建');await until(()=>remote('立即同步创建'),'Create was not immediately uploaded');await settled();console.log(`Immediate create uploaded in ${Date.now()-start}ms with autoSync disabled`);
+  await edit('立即同步创建','立即同步修改');await until(()=>remote('立即同步修改'),'Edit was not immediately uploaded');await settled();
+  let entered=false;const gate=new Promise(resolve=>releasePut=resolve);fixture.beforePut=async()=>{entered=true;await gate;};
+  await edit('立即同步修改','上传中的第一版');await until(()=>entered,'First PUT did not start');
+  await edit('上传中的第一版','上传中的最终版');fixture.beforePut=undefined;releasePut();await until(()=>remote('上传中的最终版'),'Edit during in-flight sync was lost');await settled();
+  fixture.status=503;await save('离线修改保留');await until(async()=>(await page.evaluate(()=>window.shixu.snapshot())).accounts.some(account=>account.error),'Offline sync error missing');
+  if(!await local('离线修改保留')||remote('离线修改保留'))throw new Error('Offline save was lost or reported remotely');
+  fixture.status=0;await edit('离线修改保留','恢复后立即提交');await until(()=>remote('恢复后立即提交'),'Recovery did not upload pending changes');await settled();
+  const event=await local('上传中的最终版');await page.evaluate(id=>window.shixu.deleteEvent(id,'series'),event.resourceId);await until(()=>!remote('上传中的最终版'),'Delete was not immediately submitted');await settled();
+  if((await page.evaluate(()=>window.shixu.snapshot())).conflicts.length)throw new Error('Immediate sync introduced conflicts');
+  console.log('PASS: immediate create/edit/delete, edits while PUT in flight, offline persistence and retry, existing version/ETag protection');
+}finally{releasePut?.();await browser?.close().catch(()=>{});if(app.exitCode===null)app.kill();await fixture.close();}

@@ -25,6 +25,7 @@
     "test:tauri-desktop": "node scripts/tauri-desktop-smoke.mjs",
     "test:tauri-polish": "node scripts/tauri-polish-smoke.mjs",
     "test:tauri-editor": "node scripts/tauri-editor-smoke.mjs",
+    "test:tauri-immediate-sync": "node scripts/tauri-immediate-sync-smoke.mjs",
     "test:tauri-capacity": "node scripts/tauri-capacity-smoke.mjs",
     "test:tauri-notification": "node scripts/tauri-notification-smoke.mjs",
     "test:tauri-silent": "node scripts/tauri-silent-smoke.mjs",

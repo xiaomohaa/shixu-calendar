@@ -79,7 +79,7 @@ async function quit() {
 try {
   await launch();
   await main.getByRole('button',{name:'设置',exact:true}).click();
-  await main.getByRole('button',{name:'启动与后台',exact:true}).click();
+  await main.getByRole('button',{name:'通知设置',exact:true}).click();
   if(!(await main.getByRole('radio',{name:'系统通知',exact:true}).isChecked()))throw new Error('Legacy default should remain system notifications');
   await main.getByRole('radio',{name:'macOS 风格悬浮通知',exact:true}).click();
   await until(async()=>(await main.evaluate(()=>window.shixu.snapshot())).settings.notificationMode==='floating','Notification mode did not persist');

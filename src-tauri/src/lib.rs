@@ -5,12 +5,12 @@ mod storage;
 mod updates;
 #[cfg(windows)]
 mod vault;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     sync::{
-        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
     },
 };
 use tauri::{Emitter, Manager};
@@ -44,10 +44,90 @@ fn show_main(app: &tauri::AppHandle) {
 #[derive(Default)]
 struct SyncTracker {
     active: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    immediate: Mutex<HashMap<String, Arc<AtomicBool>>>,
+}
+
+fn request_immediate_sync(app: &tauri::AppHandle, id: String) {
+    let tracker = app.state::<SyncTracker>();
+    let pending = Arc::new(AtomicBool::new(true));
+    {
+        let Ok(mut requests) = tracker.immediate.lock() else {
+            return;
+        };
+        if let Some(existing) = requests.get(&id) {
+            existing.store(true, Ordering::SeqCst);
+            return;
+        }
+        requests.insert(id.clone(), pending.clone());
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        loop {
+            let tracker = app.state::<SyncTracker>();
+            let owns = tracker
+                .immediate
+                .lock()
+                .map(|requests| {
+                    requests
+                        .get(&id)
+                        .is_some_and(|owner| Arc::ptr_eq(owner, &pending))
+                })
+                .unwrap_or(false);
+            if !owns {
+                return;
+            }
+            if app.state::<updates::Updates>().is_installing() {
+                if let Ok(mut requests) = tracker.immediate.lock() {
+                    if requests
+                        .get(&id)
+                        .is_some_and(|owner| Arc::ptr_eq(owner, &pending))
+                    {
+                        requests.remove(&id);
+                    }
+                }
+                return;
+            }
+            if tracker
+                .active
+                .lock()
+                .map(|active| active.contains_key(&id))
+                .unwrap_or(true)
+            {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                continue;
+            }
+            pending.store(false, Ordering::SeqCst);
+            let result = sync_one(&id, &app).await;
+            if matches!(result.as_ref(),Err(error) if error == "账户正在同步") {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                continue;
+            }
+            let Ok(mut requests) = tracker.immediate.lock() else {
+                return;
+            };
+            if !requests
+                .get(&id)
+                .is_some_and(|owner| Arc::ptr_eq(owner, &pending))
+            {
+                return;
+            }
+            if pending.load(Ordering::SeqCst)
+                && !matches!(result.as_ref(),Err(error) if error == "同步已取消")
+            {
+                continue;
+            }
+            requests.remove(&id);
+            return;
+        }
+    });
 }
 
 impl SyncTracker {
     async fn stop_for_update(&self) -> Result<(), String> {
+        self.immediate
+            .lock()
+            .map_err(|_| "同步状态暂时不可用")?
+            .clear();
         {
             let active = self.active.lock().map_err(|_| "同步状态暂时不可用")?;
             for cancel in active.values() {
@@ -488,6 +568,11 @@ async fn shixu_call(
         return Ok(json!({"ok": true, "value": null}));
     }
     if method == "cancelSync" {
+        syncing
+            .immediate
+            .lock()
+            .map_err(|_| "同步状态暂时不可用")?
+            .clear();
         if !args.is_empty() {
             return Ok(json!({"ok": false, "error": "同步参数无效"}));
         }
@@ -704,19 +789,18 @@ async fn shixu_call(
         .lock()
         .map_err(|_| "本地数据库暂时不可用".to_string())?;
     let mut changed = false;
+    let mut sync_after = None;
     let result: Result<Value, String> = match method.as_str() {
         "snapshot" if args.len() == 1 && args[0].is_object() => {
             let mut snapshot = store
                 .snapshot(args[0].clone())
                 .map_err(|_| "读取本地数据库失败")?;
-            snapshot["syncing"] = json!(
-                syncing
-                    .active
-                    .lock()
-                    .map_err(|_| "同步状态暂时不可用")?
-                    .keys()
-                    .collect::<Vec<_>>()
-            );
+            snapshot["syncing"] = json!(syncing
+                .active
+                .lock()
+                .map_err(|_| "同步状态暂时不可用")?
+                .keys()
+                .collect::<Vec<_>>());
             Ok(snapshot)
         }
         "eventResources" if args.len() == 1 && args[0].is_object() => store
@@ -735,9 +819,16 @@ async fn shixu_call(
                 args[3].as_str(),
                 args[4].as_bool(),
             ) {
-                (Some(calendar_id), resource_id, expected_ics, Some(ics), Some(delete)) => store
-                    .queue_event(calendar_id, resource_id, expected_ics, ics, delete)
-                    .map(|_| Value::Null),
+                (Some(calendar_id), resource_id, expected_ics, Some(ics), Some(delete)) => {
+                    store.calendar_account(calendar_id).and_then(|id| {
+                        store
+                            .queue_event(calendar_id, resource_id, expected_ics, ics, delete)
+                            .map(|_| {
+                                sync_after = Some(id);
+                                Value::Null
+                            })
+                    })
+                }
                 _ => Err("日程参数无效".into()),
             }
         }
@@ -788,8 +879,12 @@ async fn shixu_call(
         }
         _ => return Ok(json!({"ok": false, "error": "此功能正在迁移到 Tauri，尚未开放"})),
     };
+    drop(store);
     match result {
         Ok(value) => {
+            if let Some(id) = sync_after {
+                request_immediate_sync(&app, id);
+            }
             if changed {
                 let _ = app.emit("shixu:changed", ());
             }

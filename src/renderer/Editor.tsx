@@ -4,7 +4,7 @@ import type { Calendar, EventInput } from '../shared/contracts';
 import { Busy, Panel } from './components';
 import type { PanelAnchor } from './popoverLayout';
 import { newEventTime } from '../calendar/newEventTime';
-import { editorTime, sourceTime } from '../calendar/editorTime';
+import { editorTime, changedEventTime } from '../calendar/editorTime';
 import { EventDateTime } from './EventDateTime';
 
 export function Editor({ initial, calendars, close, saved, anchor, duration = 60, changed, displayTimezone, registerCloseGuard }: { initial: EventInput; calendars: Calendar[]; close: () => void; saved: () => void; anchor?: PanelAnchor; duration?: number; changed?: (draft: EventInput) => void; displayTimezone: string; registerCloseGuard?: (guard: () => boolean) => void }) {
@@ -31,7 +31,7 @@ export function Editor({ initial, calendars, close, saved, anchor, duration = 60
   const dismiss = () => { if (!dirty.current || window.confirm('放弃尚未保存的日程修改？')) close(); };
   const display = (value: string) => editorTime(value, form, displayTimezone);
   const changeTime = (key: 'start' | 'end', value: string) => {
-    try { set(key, sourceTime(value, form, displayTimezone)); setError(''); }
+    try { const next = changedEventTime(form,key,value,displayTimezone); dirty.current = true; setForm(next); setError(''); }
     catch (error) { setError((error as Error).message); }
   };
   const act = async (fn: () => Promise<void>) => { setBusy(true); setError(''); try { await fn(); dirty.current = false; saved(); close(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); } };

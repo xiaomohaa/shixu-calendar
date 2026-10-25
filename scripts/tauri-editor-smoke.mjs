@@ -4,6 +4,7 @@ import { spawn } from 'node:child_process';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createRequire } from 'node:module';
+import { editorDateTime } from './editor-controls.mjs';
 
 const data=resolve('.smoke-data',`compact-editor-${Date.now()}`), require=createRequire(import.meta.url);
 await mkdir(data,{recursive:true});
@@ -37,6 +38,18 @@ try {
     return id;
   },fixture.account);
   await open('紧凑日程','25');
+  await page.getByLabel('开始时间',{exact:true}).fill('23:30');
+  if(await editorDateTime(page,'结束')!=='2026-10-26T00:30')throw new Error('Start change did not shift end one hour across midnight');
+  await page.getByLabel('开始时间',{exact:true}).click();
+  const clockPicker=page.getByRole('dialog',{name:'选择开始时间',exact:true});await clockPicker.waitFor();
+  await clockPicker.getByLabel('开始小时',{exact:true}).selectOption('10');await clockPicker.getByLabel('开始分钟',{exact:true}).selectOption('00');
+  await page.screenshot({path:'.smoke-data/time-picker-done.png'});
+  await clockPicker.getByRole('button',{name:'开始时间完成',exact:true}).click();await clockPicker.waitFor({state:'detached'});
+  if(await editorDateTime(page,'结束')!=='2026-10-25T11:00')throw new Error('Clock selection did not adjust end');
+  await page.getByLabel('开始时间',{exact:true}).click();await clockPicker.waitFor();await page.keyboard.press('Escape');await clockPicker.waitFor({state:'detached'});
+  if(!await page.locator('.editor-panel').isVisible())throw new Error('Closing clock picker dismissed editor');
+  await page.getByRole('button',{name:'开始日期',exact:true}).click();
+  await page.getByRole('button',{name:'开始日期完成',exact:true}).click();
   const metrics=()=>page.locator('.reference-event-editor').evaluate(element=>({
     title:element.querySelector('.event-title-input').getBoundingClientRect().height,
     titleOverflow:element.querySelector('.event-title-input').scrollHeight>element.querySelector('.event-title-input').clientHeight,
@@ -68,6 +81,7 @@ try {
   await page.getByRole('button',{name:'确认删除',exact:true}).click();await page.locator('.editor-panel').waitFor({state:'detached'});
   let remaining=(await events()).filter(event=>event.title==='未来删除测试');
   if(remaining.length!==3||remaining.some(event=>event.start>='2026-10-22'))throw new Error('Future deletion lost history or left future events');
+  await until(async()=>(await page.evaluate(()=>window.shixu.snapshot())).syncing.length===0,'Immediate sync did not settle');
   await page.evaluate(id=>window.shixu.sync(id),account);
   remaining=(await events()).filter(event=>event.title==='未来删除测试');
   if(remaining.length!==3)throw new Error('CalDAV roundtrip changed truncated recurrence');
@@ -78,6 +92,7 @@ try {
   if((await events()).some(event=>event.title==='单次删除测试'))throw new Error('Whole series remained');
   await open('首次删除测试','27');await remove('future');
   if((await events()).some(event=>event.title==='首次删除测试'))throw new Error('First-and-future failed to delete resource');
+  await until(async()=>(await page.evaluate(()=>window.shixu.snapshot())).syncing.length===0,'Immediate delete sync did not settle');
   await page.evaluate(id=>window.shixu.sync(id),account);
   if((await page.evaluate(()=>window.shixu.snapshot())).conflicts.length)throw new Error('Deletes introduced sync conflicts');
   await open('未来删除测试','20');

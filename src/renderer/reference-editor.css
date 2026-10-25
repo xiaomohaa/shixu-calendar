@@ -53,6 +53,15 @@
 .event-picker-day.is-selected { background:var(--hover); font-weight:600; }
 .event-picker-day.is-today { color:var(--accent); }
 .event-picker-day:hover { background:var(--hover); }
+.event-picker-footer { display:flex; justify-content:flex-end; margin-top:6px; }
+.event-picker-footer button { height:24px; padding:3px 10px; border:0; border-radius:7px; background:var(--glass-control); color:var(--accent); font-size:12px; box-shadow:inset 0 1px 1px var(--glass-edge); }
+.event-time-picker { width:180px; }
+.event-time-picker header strong { font-size:12px; }
+.event-clock-columns { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:8px; }
+.event-clock-columns label { display:flex; flex-direction:column; gap:4px; font-size:10px; color:var(--muted); text-align:center; }
+.event-clock-columns select { height:116px; padding:0; border:1px solid var(--glass-line); border-radius:7px; background:var(--editor-well); color:var(--text); font-size:12px; scrollbar-width:thin; }
+.event-clock-columns option { padding:4px 10px; }
+.event-time-input::-webkit-calendar-picker-indicator { display:none; }
 @media (max-height:520px) {
   .desktop-window .floating-editor .reference-event-editor { padding-top:12px; }
   .reference-event-editor .event-options { padding:6px 8px; gap:2px; }

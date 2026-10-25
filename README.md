@@ -4,9 +4,9 @@
 
 面向 **Windows 10 / 11 x64** 的个人桌面日历。使用 **Tauri 2、Rust、React、TypeScript 和 SQLite**，支持 CalDAV 双向同步、ICS 链接订阅、离线编辑与 Windows 提醒。
 
-当前正式版为 **2.2.2**，Windows 安装包约 **29.32 MiB**。界面采用液态玻璃风格，支持浅色、深色和跟随系统。
+当前正式版为 **2.2.3**，Windows 安装包约 **29.34 MiB**。界面采用液态玻璃风格，支持浅色、深色和跟随系统。
 
-**[下载最新正式版](https://github.com/xiaomohaa/shixu-calendar/releases/latest)** · [直接下载 2.2.2 安装包](https://github.com/xiaomohaa/shixu-calendar/releases/download/v2.2.2/Shixu-Setup-2.2.2-x64.exe) · [2.2.2 更新说明](docs/RELEASE_NOTES_2.2.2.md)
+**[下载最新正式版](https://github.com/xiaomohaa/shixu-calendar/releases/latest)** · [直接下载 2.2.3 安装包](https://github.com/xiaomohaa/shixu-calendar/releases/download/v2.2.3/Shixu-Setup-2.2.3-x64.exe) · [2.2.3 更新说明](docs/RELEASE_NOTES_2.2.3.md)
 
 ![当前月视图：农历日期、全天胶囊、跨天日程与侧栏](docs/screenshots/month-2.1.png)
 
@@ -63,7 +63,7 @@
 
 ### 日程编辑
 
-标题、日程设置、地点、所属日历和备注放在紧凑的液态玻璃浮层中，左侧竖条跟随日历颜色。标题和备注按内容自动伸缩，日期与时间分别操作，保留明确的保存、取消和删除。普通日程只删除当前记录；重复日程默认仅删除当前一次，也可选择“此日程及未来日程”或“整个重复系列”，删除未来日程会保留之前的历史。
+标题、日程设置、地点、所属日历和备注放在紧凑的液态玻璃浮层中，左侧竖条跟随日历颜色。标题和备注按内容自动伸缩，日期与时间分别操作。修改开始时间后，结束时间自动设为一小时后；仍可单独修改结束时间。日期/时间选择器均可点“完成”或按Esc退出，时间选择也可点击编辑区其他位置收起。保留明确的保存、取消和删除。普通日程只删除当前记录；重复日程默认仅删除当前一次，也可选择“此日程及未来日程”或“整个重复系列”，删除未来日程会保留之前的历史。
 
 ![紧凑液态玻璃日程浮层](docs/screenshots/editor-2.2.2.png)
 
@@ -82,7 +82,7 @@
 1. 打开设置 → 账户与同步 → 添加账户。
 2. 填写账户名称、完整 HTTPS 服务地址、用户名和密码。地址可为服务根目录、calendar-home 或具体日历地址。
 3. 点击“测试连接与自动发现”，查看实际发现的日历，再保存账户。
-4. 默认每 10 分钟自动同步，也可点击工具栏同步按钮；同步中可以取消。
+4. 保存、修改和删除日程后立即提交对应 CalDAV 账户。默认每10分钟检查远端变化，也可点击工具栏同步；离线修改保留，网络恢复后重试。暂停的账户仍保持暂停。
 5. 在侧栏勾选要显示的日历，在设置中调整颜色、默认日历，或暂停账户同步。
 
 iCloud 等服务可能需要应用专用密码。支持 HTTP Basic；明文 HTTP 必须在高级选项中主动开启。TLS 证书保持验证，自签名证书需先加入系统信任。当前没有 OAuth 登录窗口或交互式 Digest 登录。
@@ -132,12 +132,18 @@ https://calendars.icloud.com/holidays/cn_zh.ics/
 
 本地提醒使用 Windows 通知，要求应用保持运行；彻底退出后不会提醒。系统通知权限与专注助手可能影响通知显示。
 
+检测到新版本后，侧栏设置按钮和设置中的“关于与更新”都会显示红点；关闭更新提示、打开设置、下载中和下载完成时保留提示。确认已是最新版本后清除。
+
+![设置按钮上的更新红点](docs/screenshots/settings-update-dot-2.2.3.png)
+
 ### macOS 风格悬浮日程通知
 
-在 **设置 → 启动与后台 → 日程通知** 中选择：
+在 **设置 → 通知设置** 中选择：
 
 - **系统通知**：继续使用 Windows 原生通知，是旧设置的默认方式。
 - **macOS 风格悬浮通知**：透明、置顶、右上角堆叠，不抢占焦点；卡片高度跟随内容，支持浅深主题。
+
+![独立通知设置](docs/screenshots/notification-settings-2.2.3.png)
 
 点击“测试通知”可测试当前方式。悬浮通知显示约10秒，悬停时暂停；“稍后提醒”会在10分钟后再次提醒，并持久化到 SQLite，重启后继续处理。“打开日程”会唤出主窗口并定位事件；日程改期后读取最新内容，未保存编辑会先确认。
 
@@ -201,7 +207,8 @@ npx tauri build --config src-tauri/tauri.ui-preview.conf.json --no-bundle
 npm run test:tauri-account     # CalDAV、ICS、创建修改、草稿与跨天显示
 npm run test:tauri-desktop     # 原生窗口、托盘、侧栏、字体与年视图
 npm run test:tauri-polish      # 编辑器、日期选择、统一时区与明暗主题
-npm run test:tauri-editor      # 自适应弹窗、单次/未来/系列删除及同步
+npm run test:tauri-editor      # 自适应弹窗、时间联动、选择器和删除同步
+npm run test:tauri-immediate-sync # 即时提交、上传中修改、离线保留与恢复
 npm run test:tauri-capacity    # 多窗口尺寸的真实日格容量与数量折叠
 npm run test:tauri-notification # 焦点、DPI、堆叠、后台触发、稍后提醒与重启恢复
 npm run test:tauri-silent      # 静默启动与唤出
@@ -269,7 +276,7 @@ fonts/          字体素材与说明
 docs/           发布说明、截图与历史记录
 ```
 
-当前版本变化见 [2.2.2 发布说明](docs/RELEASE_NOTES_2.2.2.md) 和 [全部正式发布](https://github.com/xiaomohaa/shixu-calendar/releases)。
+当前版本变化见 [2.2.3 发布说明](docs/RELEASE_NOTES_2.2.3.md) 和 [全部正式发布](https://github.com/xiaomohaa/shixu-calendar/releases)。
 
 旧版使用与构建说明保存在 [Electron 1.3.0 历史归档](docs/archive/README_ELECTRON_1.3.0.md)。迁移计划、早期设计及验收记录仅作为历史资料，不代表当前界面或发布状态。
 

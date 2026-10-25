@@ -1,7 +1,7 @@
 use crate::dav::{AccountInput, Calendar, Pull};
-use rusqlite::{Connection, OpenFlags, OptionalExtension, backup::Backup};
+use rusqlite::{backup::Backup, Connection, OpenFlags, OptionalExtension};
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use std::{collections::HashSet, path::Path};
 use uuid::Uuid;
 
@@ -464,6 +464,16 @@ impl Store {
             "url": row.get::<_, String>(2)?, "etag": row.get::<_, Option<String>>(3)?,
             "ics": row.get::<_, String>(4)?, "dirty": row.get::<_, i64>(5)?, "deleted": row.get::<_, i64>(6)?
         }))).optional().map_err(|_| "读取日程失败".to_owned())?.ok_or("日程已移除，请刷新".into())
+    }
+
+    pub fn calendar_account(&self, calendar_id: &str) -> Result<String, String> {
+        self.db
+            .query_row(
+                "SELECT accountId FROM calendars WHERE id=?",
+                [calendar_id],
+                |row| row.get(0),
+            )
+            .map_err(|_| "日历已移除，请刷新".into())
     }
 
     pub fn queue_event(

@@ -15,7 +15,7 @@ import { SettingsPanel } from './Settings';
 import { IconButton } from './components';
 import { Almanac } from './Almanac';
 import { MonthDate } from './MonthDate';
-import { UpdateNotice } from './Updates';
+import { UpdateNotice, useUpdates, hasAvailableUpdate } from './Updates';
 import { MonthGrid } from './MonthGrid';
 import { YearGrid } from './YearGrid';
 import { getChineseCalendarDay } from '../calendar/chineseCalendar';
@@ -31,6 +31,7 @@ import type { PanelAnchor } from './popoverLayout';
 const calendarPlugins = [dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin, luxonPlugin];
 
 export function App() {
+  const updateAvailable = hasAvailableUpdate(useUpdates());
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null), [events, setEvents] = useState<CalendarEvent[]>([]);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -184,7 +185,7 @@ export function App() {
   return <div className={`desktop-window ${window.__TAURI_INTERNALS__ ? 'native-chrome' : ''}`}><WindowChrome/><div className={`app-shell ${narrow && !sidebar ? 'sidebar-collapsed' : ''} ${narrow && sidebar ? 'sidebar-overlay' : ''}`}>
     {narrow && <div className="sidebar-reveal-edge" aria-label="侧栏感应区" tabIndex={0} onPointerEnter={() => setSidebar(true)} onFocus={() => setSidebar(true)}/>}
     {narrow && sidebar && <div className="sidebar-dismiss" onPointerEnter={() => { if (!settingsTab) setSidebar(false); }} onClick={() => setSidebar(false)}/>}
-    <aside className={`sidebar ${prefs?.showSidebarEvents === false ? 'sidebar-events-hidden' : ''}`} aria-label="日历侧边栏" onPointerLeave={() => { if (narrow && !settingsTab) setSidebar(false); }}><div className="brand"><img className="app-mark" src={new URL('../../build/icon.png', import.meta.url).href} alt="时序日历"/><div><strong>时序</strong><span>留给生活的时间</span></div><IconButton label="设置" onClick={() => setSettingsTab('accounts')}><Settings2 size={12}/></IconButton></div>
+    <aside className={`sidebar ${prefs?.showSidebarEvents === false ? 'sidebar-events-hidden' : ''}`} aria-label="日历侧边栏" onPointerLeave={() => { if (narrow && !settingsTab) setSidebar(false); }}><div className="brand"><img className="app-mark" src={new URL('../../build/icon.png', import.meta.url).href} alt="时序日历"/><div><strong>时序</strong><span>留给生活的时间</span></div><IconButton label="设置" className="icon-button settings-button" title={updateAvailable ? '设置，有新版本可用' : '设置'} aria-describedby={updateAvailable ? 'settings-update-description' : undefined} onClick={() => setSettingsTab('accounts')}><Settings2 size={12}/>{updateAvailable && <><i className="settings-update-dot" aria-hidden="true"/><span id="settings-update-description" className="update-description">有新版本可用</span></>}</IconButton></div>
       <button className="new-event-button" onClick={() => create()}><Plus size={18}/>新建日程<kbd>N</kbd></button>
       <button className="today-link" onClick={() => go(today!)}><CalendarDays size={17}/><span>今天</span><span className="today-number">{DateTime.now().setZone(prefs?.timezone || DEFAULT_TIMEZONE).day}</span></button>
       <div className="sidebar-scroll">
@@ -219,6 +220,6 @@ export function App() {
       />}</div>
     </main>
     {notice && <div className="toast" role="status"><CircleCheck size={17}/>{notice}</div>}
-    {editor && snapshot && <Editor key={`${editor.resourceId ?? 'new'}:${editor.start}`} initial={editor} registerCloseGuard={registerReminderGuard} displayTimezone={snapshot.settings.timezone} anchor={editorAnchor} duration={snapshot.settings.duration} changed={updateDraft} calendars={snapshot.calendars} close={() => { setEditor(null); setDraft(null); }} saved={() => { setNotice('日程已保存在本地'); void refresh(); }}/>} {settingsTab && snapshot && <SettingsPanel snapshot={snapshot} close={() => setSettingsTab(null)} refresh={() => void refresh()} initialTab={settingsTab}/>}
+    {editor && snapshot && <Editor key={`${editor.resourceId ?? 'new'}:${editor.start}`} initial={editor} registerCloseGuard={registerReminderGuard} displayTimezone={snapshot.settings.timezone} anchor={editorAnchor} duration={snapshot.settings.duration} changed={updateDraft} calendars={snapshot.calendars} close={() => { setEditor(null); setDraft(null); }} saved={() => { setNotice('日程已保存在本地'); void refresh(); }}/>} {settingsTab && snapshot && <SettingsPanel updateAvailable={updateAvailable} snapshot={snapshot} close={() => setSettingsTab(null)} refresh={() => void refresh()} initialTab={settingsTab}/>}
   </div></div>;
 }
