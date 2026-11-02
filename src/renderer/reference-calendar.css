@@ -70,6 +70,10 @@ html, body, #root { background:transparent; }
 .app-shell .month-event.event-timed:hover { background:var(--hover); }
 .app-shell .event-timed .event-color-dot { width:3px; height:12px; border:0; border-radius:2px; background:var(--event-color); flex-shrink:0; }
 .month-span .month-event { width:100%; }
+.app-shell .month-span .month-event.event-timed.event-capsule { border-radius:999px; background:linear-gradient(180deg,color-mix(in oklab,var(--event-color) 13%,var(--field)),color-mix(in oklab,var(--event-color) 23%,var(--bg))); box-shadow:inset 0 1px 1px var(--glass-edge); }
+.app-shell .month-span .month-event.event-timed.event-capsule:hover { background:color-mix(in oklab,var(--event-color) 29%,var(--bg)); }
+.app-shell .month-span.continues-left .month-event.event-timed.event-capsule { border-top-left-radius:0; border-bottom-left-radius:0; }
+.app-shell .month-span.continues-right .month-event.event-timed.event-capsule { border-top-right-radius:0; border-bottom-right-radius:0; }
 :root { --calendar-line:oklch(92% .003 65); --event-text:oklch(10% .002 60); --overflow-text:oklch(66% .003 60); }
 :root[data-theme=dark] { --calendar-line:oklch(30% .004 60); --event-text:oklch(95% .003 60); --overflow-text:oklch(62% .003 60); }
 .month-cell, .month-weekdays { border-color:var(--calendar-line); }

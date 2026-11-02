@@ -1,5 +1,6 @@
 import { DateTime } from 'luxon';
 import type { CalendarEvent } from '../shared/contracts';
+import { eventSpanDays } from './eventDisplay';
 
 export function monthDays(month: string, firstDay: number, timezone: string): string[] {
   const start = DateTime.fromISO(month, { zone: timezone }).startOf('month');
@@ -27,6 +28,7 @@ export function groupMonthEvents(events: CalendarEvent[], days: string[], timezo
     if (!start || !end) continue;
     for (const day of days) if (day >= start && day <= end) groups.get(day)!.push(event);
   }
-  for (const list of groups.values()) list.sort((a, b) => Number(!!b.draft) - Number(!!a.draft) || Number(b.allDay) - Number(a.allDay) || a.start.localeCompare(b.start) || a.title.localeCompare(b.title, 'zh-CN'));
+  const spans = new Map(events.map(event => [event.id,eventSpanDays(event,timezone)]));
+  for (const list of groups.values()) list.sort((a, b) => Number(!!b.draft) - Number(!!a.draft) || spans.get(b.id)! - spans.get(a.id)! || Number(b.allDay) - Number(a.allDay) || a.start.localeCompare(b.start) || a.title.localeCompare(b.title, 'zh-CN'));
   return groups;
 }

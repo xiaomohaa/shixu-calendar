@@ -7,6 +7,27 @@ const days = ['2026-10-26','2026-10-27','2026-10-28','2026-10-29','2026-10-30','
 const make = (id: string, start = '2026-10-29', end = '2026-10-30'): CalendarEvent => ({ id, resourceId:id, calendarId:'cal', uid:id, title:id, start, end, allDay:true, timezone:'Asia/Shanghai', location:'', description:'', rrule:'', reminder:-1, recurring:false, pending:false, conflict:false });
 const plan = (events: CalendarEvent[], capacity: number) => weekDisplay(events,days,groupMonthEvents(events,days,'Asia/Shanghai'),'Asia/Shanghai',capacity);
 describe('日格行数不足时只显示数量', () => {
+  it('跨天非全天按完整历日跨度降序，跨周续接不改优先级', () => {
+    const events=[
+      {...make('short','2026-10-26T09:00:00+08:00','2026-10-27T10:00:00+08:00'),allDay:false},
+      {...make('long','2026-10-27T09:00:00+08:00','2026-11-05T10:00:00+08:00'),allDay:false},
+      make('medium','2026-10-28','2026-11-01'),
+    ];
+    const result=plan(events,5);
+    expect(result.segments.map(span=>[span.event.id,span.lane])).toEqual([['long',0],['medium',1],['short',1]]);
+    const nextDays=['2026-11-02','2026-11-03','2026-11-04','2026-11-05','2026-11-06','2026-11-07','2026-11-08'];
+    const next=weekDisplay(events,nextDays,groupMonthEvents(events,nextDays,'Asia/Shanghai'),'Asia/Shanghai',5);
+    expect(next.segments[0]).toMatchObject({start:0,end:3,lane:0,continuesLeft:true,continuesRight:false});
+    expect(result.cells[1].overflow).toBe(0);
+  });
+  it('恰好午夜结束不占下一天，单日非全天不变成跨天条', () => {
+    const event={...make('midnight','2026-10-27T10:00:00+08:00','2026-10-29T00:00:00+08:00'),allDay:false};
+    const result=plan([event],3);
+    expect(result.segments[0]).toMatchObject({start:1,end:2});
+    expect(result.cells[3].reserved).toBe(0);
+    const single={...make('single','2026-10-29T10:00:00+08:00','2026-10-29T11:00:00+08:00'),allDay:false};
+    expect(plan([single],3).segments).toHaveLength(0);
+  });
   it('两项只放得下一行时显示 +2，足够两行则恢复两项', () => {
     const events = [make('one'),make('two')];
     expect(plan(events,1).cells[3]).toMatchObject({ visible:[], reserved:0, overflow:2 });

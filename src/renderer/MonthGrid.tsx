@@ -7,6 +7,7 @@ import { MonthDate } from './MonthDate';
 import type { PanelAnchor } from './popoverLayout';
 import { EventMark } from './EventMark';
 import { weekDisplay } from '../calendar/weekDisplay';
+import { eventSpanDays } from '../calendar/eventDisplay';
 
 interface Props {
   now: number; month: string; firstDay: number; timezone: string; selected: string; timeFormat: '24' | '12';
@@ -59,7 +60,7 @@ export const MonthGrid = memo(function MonthGrid(p: Props) {
   const expand = (day: string, opener: HTMLElement) => { p.select(day); popupOpener.current = opener; setExpanded(day); };
   const color = (event: CalendarEvent) => colors.get(event.calendarId)?.color || '#d65c4f';
   const isWritable = (event: CalendarEvent) => !event.draft && !colors.get(event.calendarId)?.readOnly && !event.conflict;
-  const eventButton = (event: CalendarEvent, day: string) => <button key={event.id} type="button" className={`month-event ${event.allDay ? 'event-capsule event-all-day' : 'event-timed'} ${event.draft ? 'event-draft' : ''} ${event.pending ? 'event-pending' : ''} ${event.conflict ? 'event-conflict' : ''} `}
+  const eventButton = (event: CalendarEvent, day: string) => <button key={event.id} type="button" className={`month-event ${event.allDay || eventSpanDays(event,p.timezone) > 1 ? 'event-capsule' : ''} ${event.allDay ? 'event-all-day' : 'event-timed'} ${event.draft ? 'event-draft' : ''} ${event.pending ? 'event-pending' : ''} ${event.conflict ? 'event-conflict' : ''} `}
     style={{ '--event-color': color(event) } as CSSProperties} aria-label={`${timeLabel(event, p.timezone, p.timeFormat)} ${event.title}${event.pending ? '，待同步' : ''}`}
     title={`${timeLabel(event, p.timezone, p.timeFormat)} ${event.title}${event.location ? ` · ${event.location}` : ''}`} draggable={isWritable(event)}
     onPointerDown={e => e.stopPropagation()} onDragStart={e => {

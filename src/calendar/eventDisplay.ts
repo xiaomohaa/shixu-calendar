@@ -7,6 +7,12 @@ export function eventDateRange(event: CalendarEvent, timezone: string) {
   return { start: start.toISODate(), end: end.toISODate() };
 }
 
+/** Count occupied civil dates, not elapsed 24-hour periods or a clipped week. */
+export function eventSpanDays(event: CalendarEvent, timezone: string) {
+  const range = eventDateRange(event,timezone);
+  return range.start && range.end ? Math.max(1,(Date.parse(range.end)-Date.parse(range.start))/86400000+1) : 0;
+}
+
 export function eventHasEnded(event: CalendarEvent, timezone: string, now: number) {
   const end = DateTime.fromISO(event.end, { zone: timezone }).toMillis();
   return Number.isFinite(end) && end <= now;
@@ -22,7 +28,7 @@ export function weekEventSpans(events: CalendarEvent[], days: string[], timezone
   const candidates = events.map(event => ({ event, ...eventDateRange(event, timezone) }))
     .filter((item): item is { event: CalendarEvent; start: string; end: string } =>
       !!item.start && !!item.end && (item.start < item.end || !!item.event.draft) && item.start <= days[6] && item.end >= days[0])
-    .sort((a, b) => Number(!!b.event.draft) - Number(!!a.event.draft) || a.start.localeCompare(b.start) || b.end.localeCompare(a.end) || a.event.id.localeCompare(b.event.id));
+    .sort((a, b) => Number(!!b.event.draft) - Number(!!a.event.draft) || (Date.parse(b.end)-Date.parse(b.start))-(Date.parse(a.end)-Date.parse(a.start)) || a.start.localeCompare(b.start) || a.event.id.localeCompare(b.event.id));
   const lanes: boolean[][] = [];
   return candidates.map(item => {
     const start = Math.max(0, days.findIndex(day => day >= item.start));

@@ -17,7 +17,7 @@ describe('固定月网格布局', () => {
       event({ id: 'b', allDay: true, start: '2026-09-29', end: '2026-10-02' }),
       event({ id: 'c', allDay: true, start: '2026-10-02', end: '2026-10-04' }),
     ], days, 'UTC');
-    expect(spans.map(span => span.lane)).toEqual([0, 1, 0]);
+    expect(spans.map(span => [span.event.id,span.lane])).toEqual([['b',0],['a',1],['c',0]]);
   });
   it('带时区的跨天和午夜结束不额外延伸，单日不生成跨天胶囊', () => {
     expect(eventDateRange(event({ start: '2026-10-22T18:00:00Z', end: '2026-10-24T16:00:00Z' }), 'Asia/Shanghai')).toEqual({ start: '2026-10-23', end: '2026-10-24' });
