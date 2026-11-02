@@ -60,8 +60,8 @@ export const MonthGrid = memo(function MonthGrid(p: Props) {
   const expand = (day: string, opener: HTMLElement) => { p.select(day); popupOpener.current = opener; setExpanded(day); };
   const color = (event: CalendarEvent) => colors.get(event.calendarId)?.color || '#d65c4f';
   const isWritable = (event: CalendarEvent) => !event.draft && !colors.get(event.calendarId)?.readOnly && !event.conflict;
-  const eventButton = (event: CalendarEvent, day: string) => <button key={event.id} type="button" className={`month-event ${event.allDay || eventSpanDays(event,p.timezone) > 1 ? 'event-capsule' : ''} ${event.allDay ? 'event-all-day' : 'event-timed'} ${event.draft ? 'event-draft' : ''} ${event.pending ? 'event-pending' : ''} ${event.conflict ? 'event-conflict' : ''} `}
-    style={{ '--event-color': color(event) } as CSSProperties} aria-label={`${timeLabel(event, p.timezone, p.timeFormat)} ${event.title}${event.pending ? '，待同步' : ''}`}
+  const eventButton = (event: CalendarEvent, day: string, lane?: number) => <button key={event.id} type="button" className={`month-event ${event.allDay || eventSpanDays(event,p.timezone) > 1 ? 'event-capsule' : ''} ${event.allDay ? 'event-all-day' : 'event-timed'} ${event.draft ? 'event-draft' : ''} ${event.pending ? 'event-pending' : ''} ${event.conflict ? 'event-conflict' : ''} `}
+    style={{ '--event-color': color(event), gridRow:lane === undefined ? undefined : lane+1 } as CSSProperties} aria-label={`${timeLabel(event, p.timezone, p.timeFormat)} ${event.title}${event.pending ? '，待同步' : ''}`}
     title={`${timeLabel(event, p.timezone, p.timeFormat)} ${event.title}${event.location ? ` · ${event.location}` : ''}`} draggable={isWritable(event)}
     onPointerDown={e => e.stopPropagation()} onDragStart={e => {
       e.stopPropagation();
@@ -82,7 +82,7 @@ export const MonthGrid = memo(function MonthGrid(p: Props) {
     <div className="month-scroll"><div ref={grid} className={`month-grid ${layout.inlineOverflow ? 'inline-overflow' : ''}`} style={{ '--event-lane-height': `${MONTH_EVENT_LANE}px` } as CSSProperties} role="rowgroup" aria-label="月视图日期与日程" data-event-mode="capsules" data-event-capacity={layout.capacity}>
       {Array.from({ length: 6 }, (_, row) => <div role="row" className="month-week-row" key={row}>{days.slice(row * 7, row * 7 + 7).map(day => {
         const list = groups.get(day)!, dt = DateTime.fromISO(day, { zone: p.timezone });
-        const { visible, reserved, overflow } = weeks[row].cells[days.indexOf(day) % 7];
+        const { placements, overflowLane, overflow } = weeks[row].cells[days.indexOf(day) % 7];
         return <div role="gridcell" tabIndex={0} aria-selected={false} aria-label={`${dt.setLocale('zh-CN').toFormat('M月d日 cccc')}，${list.length} 项日程`} data-date={day} key={day}
           className={`month-cell ${day.slice(0, 7) !== p.month.slice(0, 7) ? 'other-month' : ''} ${day === today ? 'is-today' : ''} ${dt.weekday > 5 ? 'weekend' : ''} ${dragOver === day ? 'drop-target' : ''} ${overflow > 0 ? 'has-overflow' : ''}`}
           onDoubleClick={e => { if (!(e.target as HTMLElement).closest('button')) { p.select(day); p.create(day, undefined, false, e.currentTarget.getBoundingClientRect()); } }}
@@ -95,8 +95,8 @@ export const MonthGrid = memo(function MonthGrid(p: Props) {
           onDragOver={e => { if (e.dataTransfer.types.includes('application/x-shixu-event')) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDragOver(day); } }}
           onDragLeave={() => setDragOver(null)} onDrop={e => { e.preventDefault(); setDragOver(null); const event = p.events.find(event => event.id === e.dataTransfer.getData('application/x-shixu-event')); if (event && isWritable(event)) p.move(event, day, e.dataTransfer.getData('application/x-shixu-day')); }}>
           <button className="month-day-button" type="button" aria-label={`选择 ${day}`} onClick={e => e.stopPropagation()} onDoubleClick={e => { e.stopPropagation(); p.select(day); p.create(day, undefined, false, e.currentTarget.closest('.month-cell')!.getBoundingClientRect()); }}><MonthDate date={dt.toJSDate()} timezone={p.timezone} dayText={String(dt.day)}/></button>
-          <div className="month-event-list" style={{ '--reserved-lanes': reserved } as CSSProperties}>{visible.map(event => eventButton(event, day))}
-            {overflow > 0 && <button className="month-more" type="button" aria-label={`${day} 查看全部 ${list.length} 项日程`} onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); expand(day, e.currentTarget); }} onDoubleClick={e => e.stopPropagation()}>+{overflow}个</button>}
+          <div className="month-event-list">{placements.map(({event,lane}) => eventButton(event, day,lane))}
+            {overflow > 0 && <button className="month-more" style={{gridRow:overflowLane+1}} type="button" aria-label={`${day} 查看全部 ${list.length} 项日程`} onPointerDown={e => e.stopPropagation()} onClick={e => { e.stopPropagation(); expand(day, e.currentTarget); }} onDoubleClick={e => e.stopPropagation()}>+{overflow}个</button>}
           </div>
         </div>;
       })}<div className="month-span-layer">{weeks[row].segments.map(span => <div key={`${span.event.id}:${span.start}`} className={`month-span ${span.continuesLeft ? 'continues-left' : ''} ${span.continuesRight ? 'continues-right' : ''}`} data-start={days[row * 7 + span.start]} data-end={days[row * 7 + span.end]} style={{ gridColumn: `${span.start + 1} / ${span.end + 2}`, gridRow: span.lane + 1 }}>{eventButton(span.event, days[row * 7 + span.start])}</div>)}</div></div>)}

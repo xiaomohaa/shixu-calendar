@@ -4,9 +4,9 @@
 
 面向 **Windows 10 / 11 x64** 的个人桌面日历。使用 **Tauri 2、Rust、React、TypeScript 和 SQLite**，支持 CalDAV 双向同步、ICS 链接订阅、离线编辑与 Windows 提醒。
 
-当前正式版为 **2.2.4**，Windows 安装包约 **29.34 MiB**。界面采用液态玻璃风格，支持浅色、深色和跟随系统。
+当前正式版为 **2.2.5**，Windows 安装包约 **29.34 MiB**。界面采用液态玻璃风格，支持浅色、深色和跟随系统。
 
-**[下载最新正式版](https://github.com/xiaomohaa/shixu-calendar/releases/latest)** · [直接下载 2.2.4 安装包](https://github.com/xiaomohaa/shixu-calendar/releases/download/v2.2.4/Shixu-Setup-2.2.4-x64.exe) · [2.2.4 更新说明](docs/RELEASE_NOTES_2.2.4.md)
+**[下载最新正式版](https://github.com/xiaomohaa/shixu-calendar/releases/latest)** · [直接下载 2.2.5 安装包](https://github.com/xiaomohaa/shixu-calendar/releases/download/v2.2.5/Shixu-Setup-2.2.5-x64.exe) · [2.2.5 更新说明](docs/RELEASE_NOTES_2.2.5.md)
 
 ![当前月视图：农历日期、全天胶囊、跨天日程与侧栏](docs/screenshots/month-2.1.png)
 
@@ -276,7 +276,7 @@ fonts/          字体素材与说明
 docs/           发布说明、截图与历史记录
 ```
 
-当前版本变化见 [2.2.4 发布说明](docs/RELEASE_NOTES_2.2.4.md) 和 [全部正式发布](https://github.com/xiaomohaa/shixu-calendar/releases)。
+当前版本变化见 [2.2.5 发布说明](docs/RELEASE_NOTES_2.2.5.md) 和 [全部正式发布](https://github.com/xiaomohaa/shixu-calendar/releases)。
 
 旧版使用与构建说明保存在 [Electron 1.3.0 历史归档](docs/archive/README_ELECTRON_1.3.0.md)。迁移计划、早期设计及验收记录仅作为历史资料，不代表当前界面或发布状态。
 
@@ -285,3 +285,7 @@ docs/           发布说明、截图与历史记录
 跨天日程（含非全天日程）在月视图中显示为连续胶囊，按完整日程占用的日期数从多到少排列；跨周续接。非全天跨天胶囊保留左侧短色条，全天仍使用日历/节假日徽标；单日非全天日程保持透明背景。
 
 ![非全天跨天胶囊与最长优先排列](docs/screenshots/timed-spans-2.2.4.png)
+
+单日日程会填入当天跨天胶囊之间最靠上的空行，跨天胶囊仍保持连续和最长优先。相邻月份的阳历和农历一起淡化。
+
+![单日日程补空位与相邻月份日期淡化](docs/screenshots/gap-layout-2.2.5.png)

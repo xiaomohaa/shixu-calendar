@@ -7,6 +7,19 @@ const days = ['2026-10-26','2026-10-27','2026-10-28','2026-10-29','2026-10-30','
 const make = (id: string, start = '2026-10-29', end = '2026-10-30'): CalendarEvent => ({ id, resourceId:id, calendarId:'cal', uid:id, title:id, start, end, allDay:true, timezone:'Asia/Shanghai', location:'', description:'', rrule:'', reminder:-1, recurring:false, pending:false, conflict:false });
 const plan = (events: CalendarEvent[], capacity: number) => weekDisplay(events,days,groupMonthEvents(events,days,'Asia/Shanghai'),'Asia/Shanghai',capacity);
 describe('日格行数不足时只显示数量', () => {
+  it('高行号跨天条被折叠时，数量也能填空且不超出日格容量', () => {
+    const result=plan([make('a','2026-10-26','2026-10-30'),make('b','2026-10-27','2026-10-30'),make('c','2026-10-28','2026-10-31'),make('d','2026-10-29','2026-11-01'),make('e','2026-10-29','2026-11-01'),make('single','2026-10-30','2026-10-31')],4);
+    expect(result.cells[4].placements.map(item=>item.lane)).toEqual([0]);
+    expect(result.cells[4]).toMatchObject({overflow:1,overflowLane:1});
+  });
+  it('单日事项填入跨天条之间的空行，而非全部推到最下面', () => {
+    const result=plan([make('long','2026-10-26','2026-10-29'),make('lower','2026-10-27','2026-10-31'),make('single','2026-10-29','2026-10-30')],2);
+    // lower is longest and occupies lane 0; long occupies lane 1 only before Thursday.
+    expect(result.cells[3].placements.map(item=>[item.event.id,item.lane])).toEqual([['single',1]]);
+    const gaps=plan([make('top','2026-10-26','2026-10-29'),make('bottom','2026-10-28','2026-10-30'),make('one','2026-10-29','2026-10-30')],2);
+    expect(gaps.cells[3].placements.map(item=>[item.event.id,item.lane])).toEqual([['one',0]]);
+    expect(gaps.cells[3].overflow).toBe(0);
+  });
   it('跨天非全天按完整历日跨度降序，跨周续接不改优先级', () => {
     const events=[
       {...make('short','2026-10-26T09:00:00+08:00','2026-10-27T10:00:00+08:00'),allDay:false},

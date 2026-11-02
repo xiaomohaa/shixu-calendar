@@ -10,10 +10,17 @@ export function weekDisplay(events: CalendarEvent[], days: string[], groups: Map
     const visibleSpans = spans.filter(span => span.start <= column && span.end >= column && span.lane < budget);
     const reserved = visibleSpans.reduce((count, span) => Math.max(count, span.lane + 1), 0);
     const single = list.filter(event => { const range = eventDateRange(event, timezone); return !event.draft && range.start === range.end; });
-    const visible = single.slice(0, Math.max(0, budget - reserved));
+    const occupied = new Set(visibleSpans.map(span => span.lane));
+    const free = Array.from({length:budget},(_,lane)=>lane).filter(lane=>!occupied.has(lane));
+    const visible = single.slice(0,free.length);
+    const placements = visible.map((event,index)=>({event,lane:free[index]}));
+    const nextLane = Math.max(-1,...occupied,...placements.map(item=>item.lane))+1;
+    // A span can have a high lane because it overlaps events on other dates.
+    // Keep +N inside this cell by using a remaining hole when necessary.
+    const overflowLane = nextLane < capacity ? nextLane : free[visible.length] ?? nextLane;
     const hidden = list.length - visible.length - visibleSpans.length;
     // A one-row draft remains visible while editing; its agenda is still keyboard accessible.
-    return { visible, visibleSpans, reserved, overflow: draft && capacity === 1 ? 0 : hidden };
+    return { visible, placements, visibleSpans, reserved, overflowLane, overflow: draft && capacity === 1 ? 0 : hidden };
   });
   const segments: WeekSpan[] = [];
   for (const span of spans) {

@@ -88,7 +88,7 @@ html, body, #root { background:transparent; }
 .app-shell .event-capsule { height:16px; line-height:14px; padding:1px 4px; }
 .app-shell .month-event-time { font-size:9px; }
 .app-shell .month-more { font-size:10px; color:var(--overflow-text); }
-.app-shell .month-event-list { gap:2px; padding-left:3px; padding-right:3px; }
+.app-shell .month-event-list { display:grid; grid-template-columns:minmax(0,1fr); grid-auto-rows:var(--event-lane-height,18px); gap:0; margin-top:0; padding-left:3px; padding-right:3px; }
 /* Glass is explicitly requested for controls; date and event content keep their semantic surfaces. */
 .desktop-window .app-shell button:not(:is(.month-day-button,.month-event,.month-more,.agenda-event,.summary-event,.theme-option,.mini-grid button,.year-day,.year-month-title)) {
   background:linear-gradient(155deg,color-mix(in oklab,var(--field) 78%,transparent),color-mix(in oklab,var(--panel) 45%,transparent));
